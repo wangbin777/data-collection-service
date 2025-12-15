@@ -1,0 +1,149 @@
+[
+  {
+    "id": 1,
+    "deviceId": "PLC001",
+    "deviceName": "西门子S7-1200 PLC",
+    "deviceAlias": "主控PLC",
+    "productKey": "PLC-S7-1200",
+    "productName": "西门子PLC",
+    "groupId": "plc_group",
+    "groupName": "PLC设备组",
+    "protocolType": "MODBUS_TCP",
+    "connectionType": "TCP",
+    "ipAddress": "192.168.1.100",
+    "port": 502,
+    "protocolConfig": {
+      "slaveId": 1,
+      "timeout": 3000,
+      "retries": 3,
+      "byteOrder": "ABCD",
+      "dataBits": 8,
+      "stopBits": 1,
+      "parity": "none"
+    },
+    "connectionConfig": {
+      "keepAlive": true,
+      "reconnectInterval": 5000,
+      "connectTimeout": 3000,
+      "socketTimeout": 5000
+    },
+    "collectionInterval": 1,
+    "reportInterval": 5,
+    "status": "ONLINE",
+    "lastOnlineTime": "2024-01-15T08:30:00Z",
+    "maxRetryCount": 5,
+    "retryCount": 0,
+    "createTime": "2024-01-01T00:00:00Z",
+    "updateTime": "2024-01-15T08:30:00Z",
+    "remark": "主控PLC设备，负责生产线控制"
+  },
+  {
+    "id": 2,
+    "deviceId": "DCS001",
+    "deviceName": "中控DCS系统",
+    "deviceAlias": "DCS控制系统",
+    "protocolType": "OPCUA",
+    "connectionType": "TCP",
+    "ipAddress": "192.168.1.101",
+    "port": 4840,
+    "protocolConfig": {
+      "endpointUrl": "opc.tcp://192.168.1.101:4840",
+      "securityPolicy": "None",
+      "messageMode": "Binary",
+      "sessionTimeout": 60000,
+      "requestTimeout": 5000
+    },
+    "authConfig": {
+      "username": "admin",
+      "password": "123456",
+      "authMode": "username"
+    },
+    "collectionInterval": 2,
+    "reportInterval": 10,
+    "status": "ONLINE",
+    "lastOnlineTime": "2024-01-15T08:25:00Z",
+    "createTime": "2024-01-01T00:00:00Z",
+    "updateTime": "2024-01-15T08:25:00Z",
+    "remark": "分布式控制系统"
+  },
+  {
+    "id": 3,
+    "deviceId": "SWITCH001",
+    "deviceName": "华为交换机",
+    "deviceAlias": "核心交换机",
+    "protocolType": "SNMP",
+    "connectionType": "UDP",
+    "ipAddress": "192.168.1.102",
+    "port": 161,
+    "protocolConfig": {
+      "community": "public",
+      "version": "2c",
+      "timeout": 5000,
+      "retries": 2,
+      "maxRepetitions": 10,
+      "nonRepeaters": 0
+    },
+    "collectionInterval": 30,
+    "reportInterval": 60,
+    "status": "ONLINE",
+    "lastOnlineTime": "2024-01-15T08:20:00Z",
+    "createTime": "2024-01-01T00:00:00Z",
+    "updateTime": "2024-01-15T08:20:00Z",
+    "remark": "核心网络交换机，监控网络状态"
+  },
+  {
+    "id": 4,
+    "deviceId": "IOT001",
+    "deviceName": "温湿度传感器",
+    "deviceAlias": "车间温湿度",
+    "protocolType": "MQTT",
+    "connectionType": "TCP",
+    "ipAddress": "192.168.1.103",
+    "port": 1883,
+    "protocolConfig": {
+      "clientId": "collector_temp_humidity",
+      "topic": "sensor/temp_humidity",
+      "qos": 1,
+      "cleanSession": true,
+      "connectionTimeout": 30,
+      "keepAliveInterval": 60
+    },
+    "authConfig": {
+      "username": "iot_user",
+      "password": "iot_password",
+      "authMode": "username_password"
+    },
+    "collectionInterval": 5,
+    "reportInterval": 15,
+    "status": "ONLINE",
+    "lastOnlineTime": "2024-01-15T08:15:00Z",
+    "createTime": "2024-01-01T00:00:00Z",
+    "updateTime": "2024-01-15T08:15:00Z",
+    "remark": "车间温湿度监测传感器"
+  },
+  {
+    "id": 5,
+    "deviceId": "TEST001",
+    "deviceName": "测试设备",
+    "deviceAlias": "测试设备（离线）",
+    "protocolType": "MODBUS_TCP",
+    "connectionType": "TCP",
+    "ipAddress": "127.0.0.1",
+    "port": 502,
+    "protocolConfig": {
+      "slaveId": 1,
+      "timeout": 3000,
+      "retries": 2
+    },
+    "collectionInterval": 1,
+    "reportInterval": 5,
+    "status": "OFFLINE",
+    "lastOfflineTime": "2024-01-15T07:50:00Z",
+    "lastError": "连接超时",
+    "retryCount": 2,
+    "maxRetryCount": 3,
+    "createTime": "2024-01-01T00:00:00Z",
+    "updateTime": "2024-01-15T07:50:00Z",
+    "remark": "测试用的离线设备"
+  }
+]
