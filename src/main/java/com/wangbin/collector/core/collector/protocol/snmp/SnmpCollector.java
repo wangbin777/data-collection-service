@@ -47,14 +47,14 @@ public class SnmpCollector extends BaseCollector {
 
         // 使用配置属性
         CollectorProperties.SnmpConfig snmpConfig = collectorProperties.getSnmp();
-
+        Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
         // 优先使用设备特定的配置，没有则使用全局配置
-        String ip = (String) config.getOrDefault("ipAddress", "127.0.0.1");
-        int port = (Integer) config.getOrDefault("port", 161);
-        String community = (String) config.getOrDefault("community", snmpConfig.getCommunity());
-        int timeout = (Integer) config.getOrDefault("timeout", snmpConfig.getTimeout());
-        int retries = (Integer) config.getOrDefault("retries", snmpConfig.getRetries());
-        String versionStr = (String) config.getOrDefault("version", snmpConfig.getVersion());
+        String ip = (String) protocolConfig.getOrDefault("ipAddress", "127.0.0.1");
+        int port = (Integer) protocolConfig.getOrDefault("port", 161);
+        String community = (String) protocolConfig.getOrDefault("community", snmpConfig.getCommunity());
+        int timeout = (Integer) protocolConfig.getOrDefault("timeout", snmpConfig.getTimeout());
+        int retries = (Integer) protocolConfig.getOrDefault("retries", snmpConfig.getRetries());
+        String versionStr = (String) protocolConfig.getOrDefault("version", snmpConfig.getVersion());
 
         // 创建传输映射
         transport = new DefaultUdpTransportMapping();
