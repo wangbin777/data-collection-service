@@ -5,8 +5,9 @@ import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.GroupedPoint;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.RegisterType;
+import com.wangbin.collector.core.collector.protocol.modbus.plan.ModbusReadPlan;
+import com.wangbin.collector.core.collector.protocol.modbus.plan.ModbusReadPlanBuilder;
 import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusGroupingUtil;
-import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusParser;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
@@ -19,7 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public abstract class AbstractModbusCollector extends BaseCollector {
 
     protected int timeout = 3000;
-    protected int slaveId = 1;
+    /*protected int slaveId = 1;*/
+    protected volatile List<ModbusReadPlan> readPlans = List.of();
 
     // 订阅缓存
     protected final Map<RegisterType, Map<Integer, DataPoint>> registerCache = new ConcurrentHashMap<>();
@@ -27,10 +29,68 @@ public abstract class AbstractModbusCollector extends BaseCollector {
     // =============== 公共方法 ===============
 
     /**
-     * 解析Modbus地址
+     * 构建执行计划
+     * @param points
      */
-    protected ModbusAddress parseModbusAddress(String addressStr) {
-        return ModbusParser.parseModbusAddress(addressStr);
+    @Override
+    protected void buildReadPlans(String deviceId, List<DataPoint> points) {
+        this.readPlans = ModbusReadPlanBuilder.build(
+                points,
+                this::resolveUnitId,
+                this::parseModbusAddress
+        );
+        log.info("Modbus ReadPlan 构建完成，计划数: {}", readPlans.size());
+    }
+
+    /**
+     * 解析Modbus地址字符串
+     */
+    public ModbusAddress parseModbusAddress(String addressStr) {
+        if (addressStr == null || addressStr.isEmpty()) {
+            throw new IllegalArgumentException("Modbus地址不能为空");
+        }
+
+        try {
+            int address;
+            RegisterType type;
+            int typeCode;
+
+            // 处理分隔符格式: "3x40001", "3X40001", "3:40001"
+            if (addressStr.contains("x") || addressStr.contains("X") || addressStr.contains(":")) {
+                String[] parts = addressStr.split("[xX:]");
+                if (parts.length != 2) {
+                    throw new IllegalArgumentException("Modbus地址格式错误，应为'类型x地址'或'类型:地址': " + addressStr);
+                }
+
+                typeCode = Integer.parseInt(parts[0].trim());
+                address = Integer.parseInt(parts[1].trim());
+            } else {
+                // 处理传统格式: "440001" (4表示类型，40001表示地址)
+                int fullAddress = Integer.parseInt(addressStr.trim());
+                typeCode = fullAddress / 10000;
+                address = fullAddress % 10000 - 1;  // 转换为0-based地址
+            }
+
+            // 获取寄存器类型
+            type = RegisterType.fromCode(typeCode);
+            if (type == null) {
+                throw new IllegalArgumentException("不支持的Modbus寄存器类型代码: " + typeCode +
+                        " (地址: " + addressStr + ")");
+            }
+
+            // 验证地址有效性
+            if (address < 0) {
+                throw new IllegalArgumentException("Modbus地址不能小于0: " + addressStr);
+            }
+            if (address > 65535) {
+                throw new IllegalArgumentException("Modbus地址不能超过65535: " + addressStr);
+            }
+
+            return new ModbusAddress(type, address);
+
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Modbus地址格式错误，请输入有效的数字: " + addressStr, e);
+        }
     }
 
     /**
@@ -41,12 +101,26 @@ public abstract class AbstractModbusCollector extends BaseCollector {
     }
 
     /**
+     * 获取UnitId
+     * @param point
+     * @return
+     */
+    protected int resolveUnitId(DataPoint point) {
+        if (point.getUnitId() != null) {
+            return point.getUnitId();
+        }
+
+        Object v = deviceInfo.getProtocolConfig().get("slaveId");
+        return v instanceof Integer ? (Integer) v : 1;
+    }
+
+    /**
      * 获取设备状态信息
      */
     protected Map<String, Object> getBaseDeviceStatus(String protocolType) {
         Map<String, Object> status = new HashMap<>();
         status.put("protocol", protocolType);
-        status.put("slaveId", slaveId);
+        status.put("slaveId", "1");
         status.put("timeout", timeout);
         status.put("clientConnected", isConnected());
 

@@ -1,6 +1,7 @@
 [
   {
     "id": 101,
+    "unitId": 1,
     "pointId": "COIL_MOTOR_START",
     "pointCode": "COIL_001",
     "pointName": "电机启动控制",
@@ -18,6 +19,7 @@
   },
   {
     "id": 102,
+    "unitId": 1,
     "pointId": "COIL_ALARM_RESET",
     "pointCode": "COIL_002",
     "pointName": "报警复位按钮",
@@ -34,6 +36,7 @@
   },
   {
     "id": 103,
+    "unitId": 1,
     "pointId": "COIL_VALVE_CTRL",
     "pointCode": "COIL_003",
     "pointName": "阀门开关控制",
@@ -50,6 +53,7 @@
   },
   {
     "id": 201,
+    "unitId": 1,
     "pointId": "DI_EMERGENCY_STOP",
     "pointCode": "DI_001",
     "pointName": "急停按钮状态",
@@ -68,6 +72,7 @@
   },
   {
     "id": 202,
+    "unitId": 1,
     "pointId": "DI_DOOR_LIMIT",
     "pointCode": "DI_002",
     "pointName": "安全门开关状态",
@@ -86,6 +91,7 @@
   },
   {
     "id": 203,
+    "unitId": 1,
     "pointId": "DI_RUNNING_LIGHT",
     "pointCode": "DI_003",
     "pointName": "运行指示灯",
@@ -102,6 +108,7 @@
   },
   {
     "id": 301,
+    "unitId": 1,
     "pointId": "HR_TEMP_SETPOINT",
     "pointCode": "HR_001",
     "pointName": "温度设定值",
@@ -124,6 +131,7 @@
   },
   {
     "id": 302,
+    "unitId": 1,
     "pointId": "HR_PRESS_SETPOINT",
     "pointCode": "HR_002",
     "pointName": "压力设定值",
@@ -145,6 +153,7 @@
   },
   {
     "id": 303,
+    "unitId": 1,
     "pointId": "HR_RUN_TIME",
     "pointCode": "HR_003",
     "pointName": "设备累计运行时间",
@@ -163,6 +172,7 @@
   },
   {
     "id": 304,
+    "unitId": 1,
     "pointId": "HR_DEVICE_NAME",
     "pointCode": "HR_004",
     "pointName": "设备名称",
@@ -181,6 +191,7 @@
   },
   {
     "id": 401,
+    "unitId": 1,
     "pointId": "IR_ACTUAL_TEMP",
     "pointCode": "IR_001",
     "pointName": "实际温度值",
@@ -206,6 +217,7 @@
   },
   {
     "id": 402,
+    "unitId": 1,
     "pointId": "IR_ACTUAL_PRESS",
     "pointCode": "IR_002",
     "pointName": "实际压力值",
@@ -230,6 +242,7 @@
   },
   {
     "id": 403,
+    "unitId": 1,
     "pointId": "IR_FLOW_RATE",
     "pointCode": "IR_003",
     "pointName": "流量值",
@@ -248,6 +261,7 @@
   },
   {
     "id": 404,
+    "unitId": 1,
     "pointId": "IR_VOLTAGE",
     "pointCode": "IR_004",
     "pointName": "电源电压",
@@ -271,6 +285,7 @@
   },
   {
     "id": 405,
+    "unitId": 1,
     "pointId": "IR_HUMIDITY",
     "pointCode": "IR_005",
     "pointName": "湿度值",
@@ -291,6 +306,7 @@
   },
   {
     "id": 406,
+    "unitId": 1,
     "pointId": "IR_ENERGY",
     "pointCode": "IR_006",
     "pointName": "能耗值",

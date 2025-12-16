@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,6 +41,7 @@ public class CollectionManager {
         log.info("设备管理器销毁完成");
     }
 
+
     /**
      * 注册设备
      */
@@ -61,6 +63,17 @@ public class CollectionManager {
                 throw new CollectorException("设备注册失败", deviceId, null, e);
             }
         }
+    }
+
+    /**
+     * 设备采集执行计划
+     */
+    public void rebuildReadPlans(String deviceId, List<DataPoint> points) throws CollectorException {
+        ProtocolCollector collector = getCollector(deviceId);
+        if (collector == null) {
+            throw new CollectorException("缓存设备执行计划失败", deviceId, null);
+        }
+        collector.rebuildReadPlans(deviceId,points);
     }
 
     /**

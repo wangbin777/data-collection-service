@@ -395,7 +395,8 @@ public abstract class BaseCollector implements ProtocolCollector {
             log.debug("执行设备命令: {}, 命令: {}", deviceInfo.getDeviceId(), command);
 
             // 执行实际命令
-            Object result = doExecuteCommand(command, params);
+            Integer slaveId = (Integer)params.getOrDefault("slaveId", 1);
+            Object result = doExecuteCommand(slaveId,command, params);
 
             lastActivityTime = System.currentTimeMillis();
 
@@ -469,6 +470,15 @@ public abstract class BaseCollector implements ProtocolCollector {
             log.error("采集器销毁失败: {}", deviceInfo.getDeviceId(), e);
         }
     }
+    @Override
+    public void rebuildReadPlans(String deviceId, List<DataPoint> points){
+        try {
+            buildReadPlans(deviceId,points);
+            log.info("执行计划准备完成: {}", deviceId);
+        } catch (Exception e) {
+            log.error("执行计划准备失败: {}", deviceId, e);
+        }
+    }
 
     // =============== 抽象方法 ===============
 
@@ -481,7 +491,8 @@ public abstract class BaseCollector implements ProtocolCollector {
     protected abstract void doSubscribe(List<DataPoint> points) throws Exception;
     protected abstract void doUnsubscribe(List<DataPoint> points) throws Exception;
     protected abstract Map<String, Object> doGetDeviceStatus() throws Exception;
-    protected abstract Object doExecuteCommand(String command, Map<String, Object> params) throws Exception;
+    protected abstract Object doExecuteCommand(int unitId,String command, Map<String, Object> params) throws Exception;
+    protected abstract void buildReadPlans(String deviceId, List<DataPoint> points) throws Exception;
 
     // =============== 辅助方法 ===============
 

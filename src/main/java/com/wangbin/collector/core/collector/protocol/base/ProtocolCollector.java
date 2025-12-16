@@ -106,4 +106,11 @@ public interface ProtocolCollector {
      * 销毁采集器
      */
     void destroy();
+
+    /**
+     * 执行计划
+     * @param deviceId
+     * @param points
+     */
+    void rebuildReadPlans(String deviceId, List<DataPoint> points);
 }

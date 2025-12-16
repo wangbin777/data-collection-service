@@ -8,6 +8,7 @@ import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.enums.DataType;
 import com.wangbin.collector.common.enums.Parity;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
+import com.wangbin.collector.core.collector.protocol.modbus.base.AbstractModbusCollector;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.GroupedPoint;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.RegisterType;
@@ -29,7 +30,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Component
-public class ModbusRtuCollector extends BaseCollector {
+public class ModbusRtuCollector extends AbstractModbusCollector {
 
     private ModbusRtuClient client;
     private String serialPort;
@@ -281,7 +282,7 @@ public class ModbusRtuCollector extends BaseCollector {
     }
 
     @Override
-    protected Object doExecuteCommand(String command, Map<String, Object> params) throws Exception {
+    protected Object doExecuteCommand(int unitId,String command, Map<String, Object> params) throws Exception {
         return switch (command.toUpperCase()) {
             case "READ_MULTIPLE_REGISTERS" -> executeReadMultipleRegisters(params);
             case "WRITE_MULTIPLE_REGISTERS" -> executeWriteMultipleRegisters(params);
@@ -773,88 +774,6 @@ public class ModbusRtuCollector extends BaseCollector {
     }
 
     /**
-     * 解析Modbus地址
-     */
-    private ModbusAddress parseModbusAddress(String addressStr) {
-        if (addressStr == null || addressStr.isEmpty()) {
-            throw new IllegalArgumentException("Modbus地址不能为空");
-        }
-
-        try {
-            int address;
-            RegisterType type;
-
-            if (addressStr.contains("x") || addressStr.contains("X") || addressStr.contains(":")) {
-                String[] parts = addressStr.split("[xX:]");
-                if (parts.length != 2) {
-                    throw new IllegalArgumentException("Modbus地址格式错误: " + addressStr);
-                }
-
-                int typeCode = Integer.parseInt(parts[0]);
-                address = Integer.parseInt(parts[1]);
-
-                type = RegisterType.fromCode(typeCode);
-                if (type == null) {
-                    throw new IllegalArgumentException("不支持的Modbus寄存器类型: " + typeCode);
-                }
-            } else {
-                int fullAddress = Integer.parseInt(addressStr);
-                int typeCode = fullAddress / 10000;
-                address = fullAddress % 10000 - 1;
-
-                type = RegisterType.fromCode(typeCode);
-                if (type == null) {
-                    throw new IllegalArgumentException("不支持的Modbus寄存器类型: " + typeCode);
-                }
-            }
-
-            return new ModbusAddress(type, address);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Modbus地址格式错误: " + addressStr, e);
-        }
-    }
-
-    /**
-     * 按连续地址分组
-     */
-    private List<List<GroupedPoint>> groupContinuousPoints(List<GroupedPoint> points) {
-        if (points == null || points.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        points.sort(Comparator.comparingInt(o -> o.getAddress().getAddress()));
-
-        List<List<GroupedPoint>> groups = new ArrayList<>();
-        List<GroupedPoint> currentGroup = new ArrayList<>();
-
-        int lastAddress = -999999;
-
-        for (GroupedPoint gp : points) {
-            int addr = gp.getAddress().getAddress();
-
-            if (currentGroup.isEmpty()) {
-                currentGroup.add(gp);
-            } else {
-                if (addr == lastAddress + 1) {
-                    currentGroup.add(gp);
-                } else {
-                    groups.add(currentGroup);
-                    currentGroup = new ArrayList<>();
-                    currentGroup.add(gp);
-                }
-            }
-
-            lastAddress = addr;
-        }
-
-        if (!currentGroup.isEmpty()) {
-            groups.add(currentGroup);
-        }
-
-        return groups;
-    }
-
-    /**
      * RTU等待方法（带帧间隔）
      */
     private <T> T rtuWait(CompletionStage<T> future) throws Exception {
@@ -866,5 +785,10 @@ public class ModbusRtuCollector extends BaseCollector {
             Thread.sleep(interFrameDelay);
         }
         return result;
+    }
+
+    @Override
+    public boolean isConnected() {
+        return client != null;
     }
 }

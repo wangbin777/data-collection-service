@@ -6,6 +6,7 @@ import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.manager.CollectionManager;
 import com.wangbin.collector.core.collector.statistics.CollectionStatistics;
 import com.wangbin.collector.core.config.manager.ConfigManager;
+import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -364,6 +365,9 @@ public class CollectionScheduler {
             // 6. 智能分组和调度（核心优化）
             scheduleDevicePoints(deviceId, dataPoints, collectionConfig);
 
+            //列出执行计划
+            collectionManager.rebuildReadPlans(deviceId,dataPoints);
+
             // 7. 更新状态
             deviceScheduleInfo.put(deviceId, new DeviceScheduleInfo(deviceId, true));
             collectionStatistics.startCollection(deviceId, dataPoints.size());
@@ -382,8 +386,7 @@ public class CollectionScheduler {
     /**
      * 智能调度设备点位（核心优化算法）
      */
-    private void scheduleDevicePoints(String deviceId, List<DataPoint> points,
-                                      com.wangbin.collector.common.domain.entity.CollectionConfig config) {
+    private void scheduleDevicePoints(String deviceId, List<DataPoint> points,CollectionConfig config) {
         // 1. 智能批量分组
         List<List<DataPoint>> batches = smartBatchGrouping(points, deviceId);
 
@@ -858,7 +861,7 @@ public class CollectionScheduler {
      * 配置更新事件监听
      */
     @EventListener
-    public void handleConfigUpdate(com.wangbin.collector.core.config.model.ConfigUpdateEvent event) {
+    public void handleConfigUpdate(ConfigUpdateEvent event) {
         String deviceId = event.getDeviceId();
         if (deviceId != null && isDeviceRunning(deviceId)) {
             log.info("设备 {} 配置更新，重新启动采集", deviceId);

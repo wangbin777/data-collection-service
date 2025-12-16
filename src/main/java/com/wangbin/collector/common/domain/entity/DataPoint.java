@@ -18,6 +18,11 @@ public class DataPoint {
     private Long id;
 
     /**
+     * Slave ID（从站地址） 标识应用程序中的具体设备（就像大楼的房间号）
+     */
+    private Integer unitId;
+
+    /**
      * 数据点全局唯一标识符（系统内部使用）
      */
     private String pointId;

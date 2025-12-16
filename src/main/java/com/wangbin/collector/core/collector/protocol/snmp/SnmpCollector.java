@@ -437,7 +437,7 @@ public class SnmpCollector extends BaseCollector {
     }
 
     @Override
-    protected Object doExecuteCommand(String command, Map<String, Object> params) throws Exception {
+    protected Object doExecuteCommand(int unitId,String command, Map<String, Object> params) throws Exception {
         switch (command.toLowerCase()) {
             case "get":
                 return executeGetCommand(params);
@@ -452,6 +452,11 @@ public class SnmpCollector extends BaseCollector {
             default:
                 throw new UnsupportedOperationException("不支持的SNMP命令: " + command);
         }
+    }
+
+    @Override
+    protected void buildReadPlans(String deviceId, List<DataPoint> points) throws Exception {
+
     }
 
     /**

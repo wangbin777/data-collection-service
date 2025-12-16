@@ -6,12 +6,10 @@ import com.digitalpetri.modbus.tcp.client.NettyTcpClientTransport;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.enums.DataType;
 import com.wangbin.collector.core.collector.protocol.modbus.base.AbstractModbusCollector;
-import com.wangbin.collector.core.collector.protocol.modbus.domain.GroupedPoint;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusRequestBuilder;
-import com.wangbin.collector.core.collector.protocol.modbus.domain.RegisterType;
-import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusConverter;
-import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusGroupingUtil;
+import com.wangbin.collector.core.collector.protocol.modbus.plan.ModbusReadPlan;
+import com.wangbin.collector.core.collector.protocol.modbus.plan.PointOffset;
 import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusUtils;
 import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -48,7 +46,6 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
         host = deviceInfo.getIpAddress();
         port = deviceInfo.getPort() != null ? deviceInfo.getPort() : 502;
-        slaveId = (Integer) protocolConfig.getOrDefault("slaveId", 1);
         timeout = (Integer) protocolConfig.getOrDefault("timeout", 3000);
 
         var transport = NettyTcpClientTransport.create(cfg -> {
@@ -58,7 +55,8 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
         client = ModbusTcpClient.create(transport);
         client.connect();
-        log.info("Modbus TCP连接建立成功: {}:{} (SlaveID: {})", host, port, slaveId);
+        log.info("Modbus TCP连接建立成功: {}:{} ", host, port);
+
     }
 
     @Override
@@ -79,58 +77,97 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
 
         ModbusAddress modbusAddress = parseModbusAddress(address);
-
+        int unitId = resolveUnitId(point);
         return switch (modbusAddress.getRegisterType()) {
-            case COIL -> readCoil(modbusAddress);
-            case DISCRETE_INPUT -> readDiscreteInput(modbusAddress);
-            case HOLDING_REGISTER -> readHoldingRegister(modbusAddress, point.getDataType());
-            case INPUT_REGISTER -> readInputRegister(modbusAddress, point.getDataType());
+            case COIL -> readCoil(unitId,modbusAddress);
+            case DISCRETE_INPUT -> readDiscreteInput(unitId,modbusAddress);
+            case HOLDING_REGISTER -> readHoldingRegister(unitId,modbusAddress, point.getDataType());
+            case INPUT_REGISTER -> readInputRegister(unitId,modbusAddress, point.getDataType());
             default -> throw new IllegalArgumentException("不支持的寄存器类型: " + modbusAddress.getRegisterType());
         };
     }
 
     @Override
     protected Map<String, Object> doReadPoints(List<DataPoint> points) {
+
         Map<String, Object> results = new HashMap<>();
 
-        // 按寄存器类型分组
-        Map<RegisterType, List<GroupedPoint>> groups = new EnumMap<>(RegisterType.class);
-
-        for (DataPoint point : points) {
+        for (ModbusReadPlan plan : readPlans) {
             try {
-                ModbusAddress address = parseModbusAddress(point.getAddress());
-                RegisterType type = address.getRegisterType();
-                groups.computeIfAbsent(type, k -> new ArrayList<>())
-                        .add(new GroupedPoint(address, point));
+                byte[] raw = executeReadPlan(plan);
+
+                for (PointOffset po : plan.getPoints()) {
+                    Object value = ModbusUtils.parseValue(
+                            raw,
+                            po.getOffset(),
+                            po.getDataType()
+                    );
+                    results.put(po.getPointId(), value);
+                }
+
             } catch (Exception e) {
-                results.put(point.getPointId(), null);
-                log.error("解析点位地址失败: {}", point.getAddress(), e);
-            }
-        }
+                log.error("ReadPlan 执行失败: unitId={}, type={}, addr={}",
+                        plan.getUnitId(),
+                        plan.getRegisterType(),
+                        plan.getStartAddress(),
+                        e
+                );
 
-        // 批量读取每种寄存器类型
-        for (Map.Entry<RegisterType, List<GroupedPoint>> entry : groups.entrySet()) {
-            RegisterType type = entry.getKey();
-            List<GroupedPoint> groupedPoints = entry.getValue();
-
-            // 按连续地址分组
-            List<List<GroupedPoint>> pointGroups = groupContinuousPoints(groupedPoints);
-
-            for (List<GroupedPoint> pointGroup : pointGroups) {
-                try {
-                    Map<String, Object> groupResults = batchReadGroup(type, pointGroup);
-                    results.putAll(groupResults);
-                } catch (Exception e) {
-                    log.error("批量读取失败: {}, 组大小: {}", type, pointGroup.size(), e);
-                    for (GroupedPoint gp : pointGroup) {
-                        results.put(gp.getPoint().getPointId(), null);
-                    }
+                for (PointOffset po : plan.getPoints()) {
+                    results.put(po.getPointId(), null);
                 }
             }
         }
 
         return results;
     }
+
+    /**
+     * 执行计划
+     * @param plan
+     * @return
+     * @throws Exception
+     */
+    private byte[] executeReadPlan(ModbusReadPlan plan) throws Exception {
+
+        return switch (plan.getRegisterType()) {
+
+            case COIL -> {
+                var resp = client.readCoilsAsync(plan.getUnitId(),
+                        new ReadCoilsRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+
+                yield resp.coils();
+            }
+
+            case DISCRETE_INPUT -> {
+                var resp = client.readDiscreteInputsAsync(
+                        plan.getUnitId(),
+                        new ReadDiscreteInputsRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+
+                yield resp.inputs();
+            }
+
+            case HOLDING_REGISTER -> {
+                var resp = client.readHoldingRegistersAsync(plan.getUnitId(),
+                        new ReadHoldingRegistersRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+
+                yield resp.registers();
+            }
+
+            case INPUT_REGISTER -> {
+                var resp = client.readInputRegistersAsync(plan.getUnitId(),
+                        new ReadInputRegistersRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+
+                yield resp.registers();
+            }
+        };
+    }
+
+
 
     @Override
     protected boolean doWritePoint(DataPoint point, Object value) throws Exception {
@@ -140,10 +177,10 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
 
         ModbusAddress modbusAddress = parseModbusAddress(address);
-
+        int unitId = resolveUnitId(point);
         return switch (modbusAddress.getRegisterType()) {
-            case COIL -> writeCoil(modbusAddress, (Boolean) value);
-            case HOLDING_REGISTER -> writeHoldingRegister(modbusAddress, value, point.getDataType());
+            case COIL -> writeCoil(unitId,modbusAddress, (Boolean) value);
+            case HOLDING_REGISTER -> writeHoldingRegister(unitId,modbusAddress, value, point.getDataType());
             default -> throw new IllegalArgumentException("该寄存器类型不支持写入: " + modbusAddress.getRegisterType());
         };
     }
@@ -153,7 +190,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         Map<String, Object> status = getBaseDeviceStatus("Modbus TCP");
         status.put("host", host);
         status.put("port", port);
-        status.put("unitId", slaveId);
+        status.put("unitId", "1");
 
         // 测试连接
         try {
@@ -168,69 +205,69 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     }
 
     @Override
-    protected Object doExecuteCommand(String command, Map<String, Object> params) throws Exception {
+    protected Object doExecuteCommand(int unitId,String command, Map<String, Object> params) throws Exception {
         return switch (command.toUpperCase()) {
-            case "READ_MULTIPLE_REGISTERS" -> executeReadMultipleRegisters(params);
-            case "WRITE_MULTIPLE_REGISTERS" -> executeWriteMultipleRegisters(params);
-            case "READ_COILS" -> executeReadCoils(params);
-            case "WRITE_COILS" -> executeWriteCoils(params);
-            case "DIAGNOSTIC" -> executeDiagnostic(params);
+            case "READ_MULTIPLE_REGISTERS" -> executeReadMultipleRegisters(unitId,params);
+            case "WRITE_MULTIPLE_REGISTERS" -> executeWriteMultipleRegisters(unitId,params);
+            case "READ_COILS" -> executeReadCoils(unitId,params);
+            case "WRITE_COILS" -> executeWriteCoils(unitId,params);
+            case "DIAGNOSTIC" -> executeDiagnostic(unitId,params);
             default -> throw new IllegalArgumentException("不支持的Modbus命令: " + command);
         };
     }
 
     // =============== Modbus操作实现 ===============
 
-    private Boolean readCoil(ModbusAddress address) throws Exception {
-        CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(slaveId,
+    private Boolean readCoil(int unitId,ModbusAddress address) throws Exception {
+        CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(unitId,
                 new ReadCoilsRequest(address.getAddress(), 1));
         ReadCoilsResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
         return ModbusUtils.parseCoilValue(response.coils(), 0);
     }
 
-    private Boolean readDiscreteInput(ModbusAddress address) throws Exception {
-        CompletionStage<ReadDiscreteInputsResponse> future = client.readDiscreteInputsAsync(slaveId,
+    private Boolean readDiscreteInput(int unitId,ModbusAddress address) throws Exception {
+        CompletionStage<ReadDiscreteInputsResponse> future = client.readDiscreteInputsAsync(unitId,
                 new ReadDiscreteInputsRequest(address.getAddress(), 1));
         ReadDiscreteInputsResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
         return ModbusUtils.parseCoilValue(response.inputs(), 0);
     }
 
-    private Object readHoldingRegister(ModbusAddress address, String dataType) throws Exception {
-        int registerCount = ModbusConverter.getRegisterCount(dataType);
+    private Object readHoldingRegister(int unitId,ModbusAddress address, String dataType) throws Exception {
+        int registerCount = DataType.fromString(dataType).getRegisterCount();
         CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(
-                slaveId,
+                unitId,
                 new ReadHoldingRegistersRequest(address.getAddress(), registerCount)
         );
         ReadHoldingRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
         return ModbusUtils.parseRegisterValue(response.registers(), dataType);
     }
 
-    private Object readInputRegister(ModbusAddress address, String dataType) throws Exception {
-        int registerCount = ModbusConverter.getRegisterCount(dataType);
+    private Object readInputRegister(int unitId,ModbusAddress address, String dataType) throws Exception {
+        int registerCount = DataType.fromString(dataType).getRegisterCount();
         CompletionStage<ReadInputRegistersResponse> future = client.readInputRegistersAsync(
-                slaveId,
+                unitId,
                 new ReadInputRegistersRequest(address.getAddress(), registerCount)
         );
         ReadInputRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
         return ModbusUtils.parseRegisterValue(response.registers(), dataType);
     }
 
-    private boolean writeCoil(ModbusAddress address, boolean value) throws Exception {
+    private boolean writeCoil(int unitId,ModbusAddress address, boolean value) throws Exception {
         CompletionStage<WriteSingleCoilResponse> future = client.writeSingleCoilAsync(
-                slaveId,
+                unitId,
                 new WriteSingleCoilRequest(address.getAddress(), value)
         );
         WriteSingleCoilResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
         return response != null;
     }
 
-    private boolean writeHoldingRegister(ModbusAddress address, Object value, String dataType) throws Exception {
-        int registerCount = ModbusConverter.getRegisterCount(dataType);
-        short[] registers = ModbusConverter.valueToRegisters(value, dataType, registerCount, java.nio.ByteOrder.BIG_ENDIAN);
+    private boolean writeHoldingRegister(int unitId,ModbusAddress address, Object value, String dataType) throws Exception {
+        int registerCount = DataType.fromString(dataType).getRegisterCount();
+        short[] registers = ModbusUtils.valueToRegisters(value, dataType, java.nio.ByteOrder.BIG_ENDIAN);
 
         if (registerCount == 1) {
             WriteSingleRegisterRequest request = new WriteSingleRegisterRequest(address.getAddress(), registers[0]);
-            CompletionStage<WriteSingleRegisterResponse> future = client.writeSingleRegisterAsync(slaveId, request);
+            CompletionStage<WriteSingleRegisterResponse> future = client.writeSingleRegisterAsync(unitId, request);
 
             try {
                 WriteSingleRegisterResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
@@ -240,7 +277,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             }
         } else {
             WriteMultipleRegistersRequest request = ModbusRequestBuilder.buildWriteMultipleRegisters(address.getAddress(), registers);
-            CompletionStage<WriteMultipleRegistersResponse> future = client.writeMultipleRegistersAsync(slaveId, request);
+            CompletionStage<WriteMultipleRegistersResponse> future = client.writeMultipleRegistersAsync(unitId, request);
             try {
                 WriteMultipleRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
                 return response != null;
@@ -250,168 +287,13 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
-    private Map<String, Object> batchReadGroup(RegisterType type, List<GroupedPoint> pointGroup) throws Exception {
-        if (pointGroup.isEmpty()) {
-            return Collections.emptyMap();
-        }
-
-        int[] range = ModbusGroupingUtil.getAddressRange(pointGroup);
-        int minAddress = range[0];
-        //读取几个寄存器
-        int quantity = range[1];
-
-        return switch (type) {
-            case COIL -> batchReadCoils(pointGroup, minAddress, quantity);
-            case DISCRETE_INPUT -> batchReadDiscreteInputs(pointGroup, minAddress, quantity);
-            case HOLDING_REGISTER -> batchReadHoldingRegisters(pointGroup, minAddress, quantity);
-            case INPUT_REGISTER -> batchReadInputRegisters(pointGroup, minAddress, quantity);
-            default -> throw new IllegalArgumentException("不支持的批量读取类型: " + type);
-        };
-    }
-
-    /**
-     * 批量读取线圈
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadCoils(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        ReadCoilsRequest request = new ReadCoilsRequest(minAddress, quantity);
-        CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(slaveId, request);
-
-        try {
-            ReadCoilsResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            Map<String, Object> results = new HashMap<>();
-            List<Boolean> bools = ModbusUtils.getCoilValues(response.coils(), quantity);
-
-            for (GroupedPoint gp : pointGroup) {
-                int offset = gp.getAddress().getAddress() - minAddress;
-                if (offset >= 0 && offset < bools.size()) {
-                    results.put(gp.getPoint().getPointId(), bools.get(offset));
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
-        }
-    }
-
-    /**
-     * 批量读取离散输入寄存器
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadDiscreteInputs(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(minAddress, quantity);
-        CompletionStage<ReadDiscreteInputsResponse> future = client.readDiscreteInputsAsync(slaveId, request);
-
-        try {
-            ReadDiscreteInputsResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            Map<String, Object> results = new HashMap<>();
-
-            if (response != null && response.inputs() != null) {
-                byte[] raw = response.inputs();
-
-                for (GroupedPoint gp : pointGroup) {
-                    int offset = gp.getAddress().getAddress() - minAddress;
-                    int byteIndex = offset / 8;
-                    int bitIndex = offset % 8;
-
-                    if (byteIndex < raw.length) {
-                        boolean value = ModbusUtils.parseBit(raw, offset);
-                        results.put(gp.getPoint().getPointId(), value);
-                    }
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
-        }
-    }
-
-    /**
-     * 批量读取保持寄存器
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadHoldingRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-
-        ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(minAddress, quantity);
-        CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(slaveId, request);
-
-        try {
-            ReadHoldingRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            Map<String, Object> results = new HashMap<>();
-
-            if (response != null && response.registers() != null) {
-                byte[] raw = response.registers();
-
-                for (GroupedPoint gp : pointGroup) {
-                    int offsetRegister = gp.getAddress().getAddress() - minAddress;
-                    String dataType = gp.getPoint().getDataType();
-                    Object value = ModbusUtils.parseValue(raw, offsetRegister, dataType);
-                    results.put(gp.getPoint().getPointId(), value);
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
-        }
-    }
-
-    /**
-     * 批量输入保持寄存器
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadInputRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-
-        ReadInputRegistersRequest request = new ReadInputRegistersRequest(minAddress, quantity);
-        CompletionStage<ReadInputRegistersResponse> future = client.readInputRegistersAsync(slaveId, request);
-
-        try {
-            ReadInputRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            Map<String, Object> results = new HashMap<>();
-
-            if (response != null && response.registers() != null) {
-                byte[] raw = response.registers();
-
-                for (GroupedPoint gp : pointGroup) {
-                    int offsetRegister = gp.getAddress().getAddress() - minAddress;
-                    String dataType = gp.getPoint().getDataType();
-                    Object value = ModbusUtils.parseValue(raw, offsetRegister, dataType);
-                    results.put(gp.getPoint().getPointId(), value);
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
-        }
-    }
-
     // =============== 命令执行方法 ===============
 
-    private Object executeReadMultipleRegisters(Map<String, Object> params) throws Exception {
+    private Object executeReadMultipleRegisters(int unitId,Map<String, Object> params) throws Exception {
         int address = (int) params.getOrDefault("address", 0);
         int quantity = (int) params.getOrDefault("quantity", 1);
-
         ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(address, quantity);
-        CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(slaveId, request);
+        CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(unitId, request);
 
         try {
             ReadHoldingRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
@@ -438,7 +320,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
-    private Object executeWriteMultipleRegisters(Map<String, Object> params) throws Exception {
+    private Object executeWriteMultipleRegisters(int unitId,Map<String, Object> params) throws Exception {
         int address = (int) params.getOrDefault("address", 0);
         @SuppressWarnings("unchecked")
         List<Integer> values = (List<Integer>) params.get("values");
@@ -447,7 +329,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
 
         WriteMultipleRegistersRequest request = ModbusRequestBuilder.buildWriteMultipleRegisters(address, values);
-        CompletionStage<WriteMultipleRegistersResponse> future = client.writeMultipleRegistersAsync(slaveId, request);
+        CompletionStage<WriteMultipleRegistersResponse> future = client.writeMultipleRegistersAsync(unitId, request);
 
         try {
             WriteMultipleRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
@@ -461,11 +343,11 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
-    private Object executeReadCoils(Map<String, Object> params) throws Exception {
+    private Object executeReadCoils(int unitId,Map<String, Object> params) throws Exception {
         int address = (int) params.getOrDefault("address", 0);
         int quantity = (int) params.getOrDefault("quantity", 1);
 
-        CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(slaveId, new ReadCoilsRequest(address, quantity));
+        CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(unitId, new ReadCoilsRequest(address, quantity));
         ReadCoilsResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
         List<Boolean> values = ModbusUtils.getCoilValues(response.coils(), quantity);
 
@@ -477,7 +359,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         );
     }
 
-    private Object executeWriteCoils(Map<String, Object> params) throws Exception {
+    private Object executeWriteCoils(int unitId,Map<String, Object> params) throws Exception {
         int address = (int) params.getOrDefault("address", 0);
         @SuppressWarnings("unchecked")
         List<Boolean> values = (List<Boolean>) params.get("values");
@@ -487,7 +369,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
         byte[] coilBytes = ModbusUtils.buildCoilBytes(values);
         WriteMultipleCoilsResponse response = client.writeMultipleCoils(
-                slaveId,
+                unitId,
                 new WriteMultipleCoilsRequest(address, values.size(), coilBytes)
         );
 
@@ -498,12 +380,12 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         );
     }
 
-    private Object executeDiagnostic(Map<String, Object> params) {
+    private Object executeDiagnostic(int unitId,Map<String, Object> params) {
         Map<String, Object> result = new HashMap<>();
         result.put("protocol", "Modbus TCP");
         result.put("host", host);
         result.put("port", port);
-        result.put("unitId", slaveId);
+        result.put("unitId", unitId);
         result.put("timeout", timeout);
         result.put("masterConnected", client != null);
         result.put("timestamp", System.currentTimeMillis());
@@ -525,7 +407,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
     private boolean testConnection() {
         try {
-            client.readHoldingRegisters(slaveId, new ReadHoldingRegistersRequest(0, 1));
+            client.readHoldingRegisters(1, new ReadHoldingRegistersRequest(0, 1));
             return true;
         } catch (Exception e) {
             log.warn("连接测试失败", e);
