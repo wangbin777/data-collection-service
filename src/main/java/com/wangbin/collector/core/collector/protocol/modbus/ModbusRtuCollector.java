@@ -12,6 +12,8 @@ import com.wangbin.collector.core.collector.protocol.modbus.base.AbstractModbusC
 import com.wangbin.collector.core.collector.protocol.modbus.domain.GroupedPoint;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.RegisterType;
+import com.wangbin.collector.core.collector.protocol.modbus.plan.ModbusReadPlan;
+import com.wangbin.collector.core.collector.protocol.modbus.plan.PointOffset;
 import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusGroupingUtil;
 import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusUtils;
 import io.netty.util.ReferenceCountUtil;
@@ -21,9 +23,7 @@ import org.springframework.stereotype.Component;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.*;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * Modbus RTU采集器（使用modbus-master-tcp库）
@@ -42,7 +42,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
     private int timeout;
     private ByteOrder byteOrder = ByteOrder.BIG_ENDIAN;
     private int interFrameDelay = 5; // 帧间延时(ms)
-
+    private final Semaphore tcpSemaphore = new Semaphore(1);
     private final Map<RegisterType, Map<Integer, DataPoint>> registerCache = new ConcurrentHashMap<>();
 
     @Override
@@ -120,46 +120,109 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
 
     @Override
     protected Map<String, Object> doReadPoints(List<DataPoint> points) {
+
         Map<String, Object> results = new HashMap<>();
 
-        // 按寄存器类型分组
-        Map<RegisterType, List<GroupedPoint>> groups = new EnumMap<>(RegisterType.class);
-
-        for (DataPoint point : points) {
+        for (ModbusReadPlan plan : readPlans) {
             try {
-                ModbusAddress address = parseModbusAddress(point.getAddress());
-                RegisterType type = address.getRegisterType();
-                groups.computeIfAbsent(type, k -> new ArrayList<>())
-                        .add(new GroupedPoint(address, point));
+                byte[] raw = executeReadPlan(plan);
+
+                for (PointOffset po : plan.getPoints()) {
+                    Object value = ModbusUtils.parseValue(
+                            raw,
+                            po.getOffset(),
+                            DataType.valueOf(po.getDataType())
+                    );
+                    results.put(po.getPointId(), value);
+                }
+
             } catch (Exception e) {
-                results.put(point.getPointId(), null);
-                log.error("解析点位地址失败: {}", point.getAddress(), e);
-            }
-        }
+                log.error("ReadPlan 执行失败: unitId={}, type={}, addr={}",
+                        plan.getUnitId(),
+                        plan.getRegisterType(),
+                        plan.getStartAddress(),
+                        e
+                );
 
-        // 批量读取每种寄存器类型
-        for (Map.Entry<RegisterType, List<GroupedPoint>> entry : groups.entrySet()) {
-            RegisterType type = entry.getKey();
-            List<GroupedPoint> groupedPoints = entry.getValue();
-
-            // 按连续地址分组
-            List<List<GroupedPoint>> pointGroups = groupContinuousPoints(groupedPoints);
-
-            for (List<GroupedPoint> pointGroup : pointGroups) {
-                try {
-                    Map<String, Object> groupResults = batchReadGroup(type, pointGroup);
-                    results.putAll(groupResults);
-                } catch (Exception e) {
-                    log.error("批量读取失败: {}, 组大小: {}", type, pointGroup.size(), e);
-                    for (GroupedPoint gp : pointGroup) {
-                        results.put(gp.getPoint().getPointId(), null);
-                    }
+                for (PointOffset po : plan.getPoints()) {
+                    results.put(po.getPointId(), null);
                 }
             }
         }
 
         return results;
     }
+
+    /**
+     * 执行计划
+     * @param plan
+     * @return
+     * @throws Exception
+     */
+    private byte[] executeReadPlan(ModbusReadPlan plan) throws Exception {
+
+        tcpSemaphore.acquire();
+        try {
+
+            int timeoutMs = 2000 + plan.getQuantity() * 10;
+
+            CompletableFuture<?> future = switch (plan.getRegisterType()) {
+                case COIL -> client.readCoilsAsync(plan.getUnitId(),
+                            new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity())
+                    ).toCompletableFuture();
+
+                case DISCRETE_INPUT ->  client.readDiscreteInputsAsync(
+                            plan.getUnitId(),
+                            new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity())
+                    ).toCompletableFuture();
+
+                case HOLDING_REGISTER -> client.readHoldingRegistersAsync(plan.getUnitId(),
+                            new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity())
+                    ).toCompletableFuture();
+
+                case INPUT_REGISTER -> client.readInputRegistersAsync(plan.getUnitId(),
+                            new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity())
+                    ).toCompletableFuture();
+
+            };
+
+            Object resp = future.get(timeoutMs, TimeUnit.MILLISECONDS);
+
+            return extractRaw(resp);
+
+        } finally {
+            tcpSemaphore.release();
+        }
+    }
+
+    /**
+     * 返回结果
+     * @param response
+     * @return
+     */
+    private byte[] extractRaw(Object response) {
+
+        if (response instanceof ReadCoilsResponse r) {
+            return r.coils();
+        }
+
+        if (response instanceof ReadDiscreteInputsResponse r) {
+            return r.inputs();
+        }
+
+        if (response instanceof ReadHoldingRegistersResponse r) {
+            return r.registers();
+        }
+
+        if (response instanceof ReadInputRegistersResponse r) {
+            return r.registers();
+        }
+
+        throw new IllegalArgumentException(
+                "Unsupported Modbus response type: " + response.getClass()
+        );
+    }
+
 
     @Override
     protected boolean doWritePoint(DataPoint point, Object value) throws Exception {
@@ -395,169 +458,6 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
             } finally {
                 ReferenceCountUtil.release(request);
             }
-        }
-    }
-
-    /**
-     * 批量读取组
-     */
-    private Map<String, Object> batchReadGroup(RegisterType type, List<GroupedPoint> pointGroup) throws Exception {
-        if (pointGroup.isEmpty()) {
-            return Collections.emptyMap();
-        }
-
-        // 找到最小和最大地址
-        int[] range = ModbusGroupingUtil.getAddressRange(pointGroup);
-        int minAddress = range[0];
-        //读取几个寄存器
-        int quantity = range[1];
-
-        return switch (type) {
-            case COIL -> batchReadCoils(pointGroup, minAddress, quantity);
-            case DISCRETE_INPUT -> batchReadDiscreteInputs(pointGroup, minAddress, quantity);
-            case HOLDING_REGISTER -> batchReadHoldingRegisters(pointGroup, minAddress, quantity);
-            case INPUT_REGISTER -> batchReadInputRegisters(pointGroup, minAddress, quantity);
-            default -> throw new IllegalArgumentException("不支持的批量读取类型: " + type);
-        };
-    }
-
-    /**
-     * 批量读取线圈
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadCoils(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        ReadCoilsRequest request = new ReadCoilsRequest(minAddress, quantity);
-        CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(slaveId, request);
-
-        try {
-            ReadCoilsResponse response = rtuWait(future);
-
-            Map<String, Object> results = new HashMap<>();
-            // 使用工具类解析线圈值
-            List<Boolean> bools = ModbusUtils.getCoilValues(response.coils(), quantity);
-            for (GroupedPoint gp : pointGroup) {
-                int offset = gp.getAddress().getAddress() - minAddress;
-                if (offset >= 0 && offset < bools.size()) {
-                    results.put(gp.getPoint().getPointId(), bools.get(offset));
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
-        }
-    }
-
-    /**
-     * 批量读取离散输入
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadDiscreteInputs(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(minAddress, quantity);
-        CompletionStage<ReadDiscreteInputsResponse> future = client.readDiscreteInputsAsync(slaveId, request);
-
-        try {
-            ReadDiscreteInputsResponse response = rtuWait(future);
-            Map<String, Object> results = new HashMap<>();
-
-            if (response != null && response.inputs() != null) {
-                byte[] raw = response.inputs();
-                int bytes = raw.length;
-
-                for (GroupedPoint gp : pointGroup) {
-                    int offset = gp.getAddress().getAddress() - minAddress;
-                    if (offset < 0 || offset >= quantity) continue;
-
-                    int byteIndex = offset / 8;
-                    int bitIndex = offset % 8;
-
-                    if (byteIndex < bytes) {
-                        // 使用工具类解析位
-                        boolean value = ModbusUtils.parseBit(raw, offset);
-                        results.put(gp.getPoint().getPointId(), value);
-                    }
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
-        }
-    }
-
-    /**
-     * 批量读取保持寄存器
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadHoldingRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-
-        ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(minAddress, quantity);
-        CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(slaveId, request);
-
-        try {
-            ReadHoldingRegistersResponse response = rtuWait(future);
-            Map<String, Object> results = new HashMap<>();
-
-            if (response != null && response.registers() != null) {
-                byte[] raw = response.registers();
-
-                for (GroupedPoint gp : pointGroup) {
-                    int offsetRegister = gp.getAddress().getAddress() - minAddress;
-                    // 使用工具类解析值
-                    Object value = ModbusUtils.parseValue(raw, offsetRegister, gp.getPoint().getDataType());
-                    results.put(gp.getPoint().getPointId(), value);
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
-        }
-    }
-
-    /**
-     * 批量读取输入寄存器
-     * @param pointGroup 点位组
-     * @param minAddress 读取开始地址
-     * @param quantity 读取几个寄存器（注意不是结束地址）
-     * @return
-     * @throws Exception
-     */
-    private Map<String, Object> batchReadInputRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-
-        ReadInputRegistersRequest request = new ReadInputRegistersRequest(minAddress, quantity);
-        CompletionStage<ReadInputRegistersResponse> future = client.readInputRegistersAsync(slaveId, request);
-
-        try {
-            ReadInputRegistersResponse response = rtuWait(future);
-            Map<String, Object> results = new HashMap<>();
-
-            if (response != null && response.registers() != null) {
-                byte[] raw = response.registers();
-
-                for (GroupedPoint gp : pointGroup) {
-                    int offsetRegister = gp.getAddress().getAddress() - minAddress;
-                    // 使用工具类解析值
-                    Object value = ModbusUtils.parseValue(raw, offsetRegister, gp.getPoint().getDataType());
-                    results.put(gp.getPoint().getPointId(), value);
-                }
-            }
-
-            return results;
-        } finally {
-            ReferenceCountUtil.release(request);
         }
     }
 

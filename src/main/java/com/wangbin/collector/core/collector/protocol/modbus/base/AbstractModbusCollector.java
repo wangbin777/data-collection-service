@@ -34,7 +34,7 @@ public abstract class AbstractModbusCollector extends BaseCollector {
      */
     @Override
     protected void buildReadPlans(String deviceId, List<DataPoint> points) {
-        this.readPlans = ModbusReadPlanBuilder.build(
+        this.readPlans = ModbusReadPlanBuilder.build(deviceId,
                 points,
                 this::resolveUnitId,
                 this::parseModbusAddress

@@ -72,8 +72,8 @@ public class CollectionScheduler {
     private final ReentrantLock scheduleLock = new ReentrantLock();
 
     // 时间片配置
-    private static final int TIME_SLICE_COUNT = 10;          // 1秒分成10个时间片
-    private static final int TIME_SLICE_INTERVAL = 100;      // 每个时间片100ms
+    private static final int TIME_SLICE_COUNT = 1;          // 1秒分成10个时间片
+    private static final int TIME_SLICE_INTERVAL = 1000;      // 每个时间片100ms
     private static final int MAX_BATCH_SIZE = 50;            // 每批最大点数
     private static final int MAX_CONCURRENT_BATCHES = 32;    // 最大并发批次数
 

@@ -126,7 +126,7 @@ public class ModbusUtils {
                 case FLOAT32_LITTLE -> parseFloat32LittleEndian(raw);
                 case FLOAT64 -> parseFloat64(raw);
                 case INT64 -> parseLong(raw);
-                case UINT64 -> parseUnsignedLong(raw);
+                case UINT64 -> parseUint64(raw);
                 case BOOLEAN -> parseBoolean(raw);
                 case STRING -> parseString(raw);
             };
@@ -136,43 +136,52 @@ public class ModbusUtils {
     }
 
     /**
-     * 根据偏移量解析寄存器值
+     * 根据偏移寄存器和数据类型解析值
+     *
+     * @param raw            Modbus 返回的原始字节（registers / coils）
+     * @param offsetRegister 偏移寄存器（从 0 开始）
+     * @param dataType       数据类型枚举
      */
-    public static Object parseValue(byte[] raw, int offsetRegister, String dataType) {
-        if (raw == null || raw.length == 0) {
+    public static Object parseValue(byte[] raw, int offsetRegister, DataType dataType) {
+        if (raw == null || raw.length == 0 || dataType == null) {
             return null;
         }
 
-        switch (dataType.toLowerCase()) {
-            case "int16":
-            case "short":
-                return parseInt16(raw, offsetRegister);
-            case "uint16":
-                return parseUInt16(raw, offsetRegister);
-            case "int32":
-                return parseInt32(raw, offsetRegister, false);
-            case "int32_swap":
-                return parseInt32(raw, offsetRegister, true);
-            case "uint32":
-                return parseUInt32(raw, offsetRegister, false);
-            case "uint32_swap":
-                return parseUInt32(raw, offsetRegister, true);
-            case "float":
-            case "float32":
-                return parseFloat32(raw, offsetRegister, false);
-            case "float_swap":
-            case "float32_swap":
-                return parseFloat32(raw, offsetRegister, true);
-            case "double":
-            case "float64":
-                return parseFloat64(raw, offsetRegister, false);
-            case "double_swap":
-            case "float64_swap":
-                return parseFloat64(raw, offsetRegister, true);
-            default:
-                return null;
+        int byteOffset = offsetRegister * 2;
+
+        // 最小长度校验（防越界）
+        if (byteOffset + dataType.getMinBytes() > raw.length) {
+            return null;
         }
+
+        return switch (dataType) {
+            case INT16 ->
+                    parseInt16(raw, offsetRegister);
+            case UINT16 ->
+                    parseUInt16(raw, offsetRegister);
+            case INT32 ->
+                    parseInt32(raw, offsetRegister, false);
+            case UINT32 ->
+                    parseUInt32(raw, offsetRegister, false);
+            case FLOAT, FLOAT32 ->
+                    parseFloat32(raw, offsetRegister, false);
+            case FLOAT32_SWAP ->
+                    parseFloat32(raw, offsetRegister, true);
+            case FLOAT64 ->
+                    parseFloat64(raw, offsetRegister, false);
+            case INT64 ->
+                    parseInt64(raw);
+            case UINT64 ->
+                    parseUint64(raw);
+            case BOOLEAN ->
+                    parseBoolean(raw);
+            case STRING ->
+                    parseString(raw);
+            default ->
+                    null;
+        };
     }
+
 
     // =============== 基本类型解析 ===============
 
@@ -494,7 +503,7 @@ public class ModbusUtils {
                 ((long) (bytes[7] & 0xFF));
     }
 
-    private static BigInteger parseUnsignedLong(byte[] bytes) {
+    private static BigInteger parseUint64(byte[] bytes) {
         if (bytes == null || bytes.length < 8) {
             return null;
         }

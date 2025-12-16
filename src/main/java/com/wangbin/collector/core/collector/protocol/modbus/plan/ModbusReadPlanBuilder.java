@@ -9,7 +9,7 @@ import java.util.function.Function;
 
 public class ModbusReadPlanBuilder {
 
-    public static List<ModbusReadPlan> build(List<DataPoint> points,
+    public static List<ModbusReadPlan> build(String deviceId,List<DataPoint> points,
                                              Function<DataPoint, Integer> unitIdResolver,
                                              Function<String, ModbusAddress> addressParser) {
         Map<Integer, Map<RegisterType, List<GroupedPoint>>> grouped = new HashMap<>();
@@ -49,7 +49,7 @@ public class ModbusReadPlanBuilder {
                         ));
                     }
 
-                    plans.add(new ModbusReadPlan(
+                    plans.add(new ModbusReadPlan(deviceId,
                             unitId,
                             type,
                             start,

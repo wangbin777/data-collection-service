@@ -10,6 +10,7 @@ import java.util.List;
 @AllArgsConstructor
 public class ModbusReadPlan {
 
+    private final String deviceId;
     private final int unitId;
     private final RegisterType registerType;
 
