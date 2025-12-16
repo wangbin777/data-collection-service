@@ -4,12 +4,14 @@ import com.digitalpetri.modbus.client.ModbusTcpClient;
 import com.digitalpetri.modbus.pdu.*;
 import com.digitalpetri.modbus.tcp.client.NettyTcpClientTransport;
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.enums.DataType;
 import com.wangbin.collector.core.collector.protocol.modbus.base.AbstractModbusCollector;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.GroupedPoint;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusRequestBuilder;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.RegisterType;
 import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusConverter;
+import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusGroupingUtil;
 import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusUtils;
 import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -253,10 +255,10 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             return Collections.emptyMap();
         }
 
-        int[] range = com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusGroupingUtil.getAddressRange(pointGroup);
+        int[] range = ModbusGroupingUtil.getAddressRange(pointGroup);
         int minAddress = range[0];
-        int maxAddress = range[1];
-        int quantity = maxAddress - minAddress + 1;
+        //读取几个寄存器
+        int quantity = range[1];
 
         return switch (type) {
             case COIL -> batchReadCoils(pointGroup, minAddress, quantity);
@@ -267,6 +269,14 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         };
     }
 
+    /**
+     * 批量读取线圈
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
+     */
     private Map<String, Object> batchReadCoils(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
         ReadCoilsRequest request = new ReadCoilsRequest(minAddress, quantity);
         CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(slaveId, request);
@@ -289,6 +299,14 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
+    /**
+     * 批量读取离散输入寄存器
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
+     */
     private Map<String, Object> batchReadDiscreteInputs(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
         ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(minAddress, quantity);
         CompletionStage<ReadDiscreteInputsResponse> future = client.readDiscreteInputsAsync(slaveId, request);
@@ -306,7 +324,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                     int bitIndex = offset % 8;
 
                     if (byteIndex < raw.length) {
-                        boolean value = ((raw[byteIndex] >> bitIndex) & 0x01) == 1;
+                        boolean value = ModbusUtils.parseBit(raw, offset);
                         results.put(gp.getPoint().getPointId(), value);
                     }
                 }
@@ -318,13 +336,17 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
+    /**
+     * 批量读取保持寄存器
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
+     */
     private Map<String, Object> batchReadHoldingRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        int maxRegisters = pointGroup.stream()
-                .mapToInt(gp -> ModbusConverter.getRegisterCount(gp.getPoint().getDataType()))
-                .max()
-                .orElse(1);
 
-        ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(minAddress, maxRegisters);
+        ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(minAddress, quantity);
         CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(slaveId, request);
 
         try {
@@ -348,13 +370,17 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
+    /**
+     * 批量输入保持寄存器
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
+     */
     private Map<String, Object> batchReadInputRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        int maxRegisters = pointGroup.stream()
-                .mapToInt(gp -> ModbusConverter.getRegisterCount(gp.getPoint().getDataType()))
-                .max()
-                .orElse(1);
 
-        ReadInputRegistersRequest request = new ReadInputRegistersRequest(minAddress, maxRegisters);
+        ReadInputRegistersRequest request = new ReadInputRegistersRequest(minAddress, quantity);
         CompletionStage<ReadInputRegistersResponse> future = client.readInputRegistersAsync(slaveId, request);
 
         try {

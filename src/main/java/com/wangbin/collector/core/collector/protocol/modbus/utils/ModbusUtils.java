@@ -121,7 +121,7 @@ public class ModbusUtils {
                 case UINT16 -> parseUInt16(raw);
                 case INT32 -> parseInt32(raw);
                 case UINT32 -> parseUInt32(raw);
-                case FLOAT32 -> parseFloat32(raw);
+                case FLOAT, FLOAT32 -> parseFloat32(raw);
                 case FLOAT32_SWAP -> parseFloat32WordSwap(raw);
                 case FLOAT32_LITTLE -> parseFloat32LittleEndian(raw);
                 case FLOAT64 -> parseFloat64(raw);
@@ -315,33 +315,6 @@ public class ModbusUtils {
     // =============== 值转换方法 ===============
 
     /**
-     * 获取数据类型对应的寄存器数量
-     */
-    public static int getRegisterCount(String dataType) {
-        if (dataType == null) return 1;
-
-        String type = dataType.toUpperCase();
-        switch (type) {
-            case "INT16":
-            case "UINT16":
-            case "BOOLEAN":
-                return 1;
-            case "INT32":
-            case "UINT32":
-            case "FLOAT":
-            case "FLOAT32":
-                return 2;
-            case "INT64":
-            case "UINT64":
-            case "DOUBLE":
-            case "FLOAT64":
-                return 4;
-            default:
-                return 1;
-        }
-    }
-
-    /**
      * 将值转换为寄存器数组
      */
     public static short[] valueToRegisters(Object value, String dataType, ByteOrder byteOrder) {
@@ -354,27 +327,16 @@ public class ModbusUtils {
         }
 
         String type = dataType.toUpperCase();
-        switch (type) {
-            case "INT16":
-            case "UINT16":
-                return new short[]{((Number) value).shortValue()};
-            case "INT32":
-                return int32ToRegisters(((Number) value).intValue(), byteOrder);
-            case "UINT32":
-                return uint32ToRegisters(((Number) value).longValue() & 0xFFFFFFFFL, byteOrder);
-            case "FLOAT":
-            case "FLOAT32":
-                return floatToRegisters(((Number) value).floatValue(), byteOrder);
-            case "DOUBLE":
-            case "FLOAT64":
-                return doubleToRegisters(((Number) value).doubleValue(), byteOrder);
-            case "BOOLEAN":
-                return new short[]{((Boolean) value) ? (short) 1 : (short) 0};
-            case "STRING":
-                return stringToRegisters(value.toString(), getRegisterCount(dataType), byteOrder);
-            default:
-                return new short[]{((Number) value).shortValue()};
-        }
+        return switch (type) {
+            case "INT16", "UINT16" -> new short[]{((Number) value).shortValue()};
+            case "INT32" -> int32ToRegisters(((Number) value).intValue(), byteOrder);
+            case "UINT32" -> uint32ToRegisters(((Number) value).longValue() & 0xFFFFFFFFL, byteOrder);
+            case "FLOAT", "FLOAT32" -> floatToRegisters(((Number) value).floatValue(), byteOrder);
+            case "DOUBLE", "FLOAT64" -> doubleToRegisters(((Number) value).doubleValue(), byteOrder);
+            case "BOOLEAN" -> new short[]{((Boolean) value) ? (short) 1 : (short) 0};
+            case "STRING" -> stringToRegisters(value.toString(), DataType.fromString(dataType).getRegisterCount(), byteOrder);
+            default -> new short[]{((Number) value).shortValue()};
+        };
     }
 
     /**

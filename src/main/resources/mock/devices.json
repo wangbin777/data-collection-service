@@ -1,6 +1,43 @@
-[
+[  {
+  "id": 1,
+  "deviceId": "PLC001",
+  "deviceName": "西门子S7-1200 PLC",
+  "deviceAlias": "主控PLC",
+  "productKey": "PLC-S7-1200",
+  "productName": "西门子PLC",
+  "groupId": "plc_group",
+  "groupName": "PLC设备组",
+  "protocolType": "MODBUS_TCP",
+  "connectionType": "TCP",
+  "ipAddress": "127.0.0.1",
+  "port": 502,
+  "protocolConfig": {
+    "slaveId": 1,
+    "timeout": 3000,
+    "retries": 3,
+    "byteOrder": "ABCD",
+    "dataBits": 8,
+    "stopBits": 1,
+    "parity": "none"
+  },
+  "connectionConfig": {
+    "keepAlive": true,
+    "reconnectInterval": 5000,
+    "connectTimeout": 3000,
+    "socketTimeout": 5000
+  },
+  "collectionInterval": 1,
+  "reportInterval": 5,
+  "status": "ONLINE",
+  "lastOnlineTime": "2024-01-15T08:30:00Z",
+  "maxRetryCount": 5,
+  "retryCount": 0,
+  "createTime": "2024-01-01T00:00:00Z",
+  "updateTime": "2024-01-15T08:30:00Z",
+  "remark": "主控PLC设备，负责生产线控制"
+},
   {
-    "id": 1,
+    "id": 2,
     "deviceId": "PLC002",
     "deviceName": "西门子S7-1200 PLC",
     "deviceAlias": "主控PLC",
@@ -12,7 +49,7 @@
     "connectionType": "SERIAL",
     "ipAddress": null,
     "port": null,
-    "serialPort": "COM1",
+    "serialPort": "COM4",
     "baudRate": 9600,
     "protocolConfig": {
       "slaveId": 1,
@@ -21,7 +58,7 @@
       "byteOrder": "ABCD",
       "dataBits": 8,
       "stopBits": 1,
-      "parity": 0,
+      "parity": "even",
       "interFrameDelay": 5,
       "readDelay": 10,
       "flowControl": "none",

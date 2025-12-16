@@ -6,9 +6,18 @@ import lombok.Getter;
 public enum DataType {
     INT16(2), UINT16(2),
     INT32(4), UINT32(4),
-    FLOAT32(4), FLOAT32_SWAP(4), FLOAT32_LITTLE(4),
+    FLOAT(4), FLOAT32(4), FLOAT32_SWAP(4), FLOAT32_LITTLE(4),
     FLOAT64(8), INT64(8), UINT64(8),
-    BOOLEAN(1), STRING(1);
+    BOOLEAN(1), STRING(1),
+    /*BYTE(1), UINT8(1), INT8(1),
+    SHORT(2), SHORT_SWAP(2), UINT16_SWAP(2),
+    LONG(4), LONG_SWAP(4), INT32_SWAP(4), UINT32_SWAP(4),
+    DOUBLE(8), DOUBLE_SWAP(8), FLOAT64_SWAP(8), FLOAT64_LITTLE(8),
+    LONGLONG(8), LONGLONG_SWAP(8), INT64_SWAP(8), UINT64_SWAP(8),
+    DWORD(4), QWORD(8),
+    BCD16(2), BCD32(4),
+    BIT(1), BIT_ARRAY(1),*/
+    ;
 
     /**
      * -- GETTER --
@@ -31,21 +40,13 @@ public enum DataType {
      * 根据字符串获取枚举
      */
     public static DataType fromString(String type) {
-        if (type == null) return null;
-        return switch (type.toUpperCase()) {
-            case "INT16" -> INT16;
-            case "UINT16" -> UINT16;
-            case "INT32" -> INT32;
-            case "UINT32" -> UINT32;
-            case "FLOAT32" -> FLOAT32;
-            case "FLOAT32_SWAP" -> FLOAT32_SWAP;
-            case "FLOAT32_LITTLE" -> FLOAT32_LITTLE;
-            case "FLOAT64" -> FLOAT64;
-            case "INT64" -> INT64;
-            case "UINT64" -> UINT64;
-            case "BOOLEAN" -> BOOLEAN;
-            case "STRING" -> STRING;
-            default -> null;
-        };
+        if (type == null || type.trim().isEmpty()) {
+            return INT16;
+        }
+        try {
+            return DataType.valueOf(type.toUpperCase().trim());
+        } catch (IllegalArgumentException e) {
+            return INT16;
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.collector.protocol.modbus.utils;
 
+import com.wangbin.collector.common.enums.DataType;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.GroupedPoint;
 
 import java.util.*;
@@ -61,11 +62,17 @@ public class ModbusGroupingUtil {
                 .mapToInt(gp -> gp.getAddress().getAddress())
                 .min()
                 .orElse(0);
-        int maxAddress = pointGroup.stream()
+        /*int maxAddress = pointGroup.stream()
                 .mapToInt(gp -> gp.getAddress().getAddress())
+                .max()
+                .orElse(0);*/
+
+        int registerCount  = pointGroup.stream()
+                .mapToInt(gp -> DataType.fromString(gp.getPoint().getDataType()).getRegisterCount())
                 .max()
                 .orElse(0);
 
-        return new int[]{minAddress, maxAddress};
+
+        return new int[]{minAddress, registerCount};
     }
 }

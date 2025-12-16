@@ -130,7 +130,7 @@
     "deviceId": "PLC001",
     "deviceName": "西门子S7-1200 PLC",
     "address": "40003",
-    "dataType": "FLOAT",
+    "dataType": "INT16",
     "readWrite": "RW",
     "unit": "MPa",
     "minValue": 0.0,

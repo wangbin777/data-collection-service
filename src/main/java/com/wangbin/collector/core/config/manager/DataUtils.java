@@ -20,7 +20,10 @@ public class DataUtils {
         // 根据设备类型生成不同的数据点
         switch (deviceId) {
             case "PLC001":
-                points = DataUtils.createPLCDataPoints();
+                points = DataUtils.createPLC001DataPoints();
+                break;
+            case "PLC002":
+                points = DataUtils.createPLC002DataPoints();
                 break;
             case "DCS001":
                 points = DataUtils.createDCSDataPoints();
@@ -45,8 +48,14 @@ public class DataUtils {
     /**
      * 创建PLC设备的模拟数据点
      */
-    public static List<DataPoint> createPLCDataPoints() {
-        return JsonDataPointLoader.loadDataPointsFromJson("mock/modbus-test-points.json");
+    public static List<DataPoint> createPLC001DataPoints() {
+        return JsonDataPointLoader.loadDataPointsFromJson("mock/modbus-PLC001-points.json");
+    }
+    /**
+     * 创建PLC设备的模拟数据点
+     */
+    public static List<DataPoint> createPLC002DataPoints() {
+        return JsonDataPointLoader.loadDataPointsFromJson("mock/modbus-PLC002-points.json");
     }
 
     /**

@@ -6,10 +6,12 @@ import com.digitalpetri.modbus.serial.client.SerialPortClientTransport;
 import com.fazecast.jSerialComm.SerialPort;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.enums.DataType;
+import com.wangbin.collector.common.enums.Parity;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.GroupedPoint;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.RegisterType;
+import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusGroupingUtil;
 import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusUtils;
 import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
@@ -58,11 +60,12 @@ public class ModbusRtuCollector extends BaseCollector {
         Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
 
         interFrameDelay = (Integer)protocolConfig.getOrDefault("interFrameDelay",5);
-        serialPort = (String) protocolConfig.getOrDefault("serialPort", "COM1");
+        serialPort = (String) protocolConfig.getOrDefault("serialPort", "COM4");
         baudRate = (Integer) protocolConfig.getOrDefault("baudRate", 9600);
         dataBits = (Integer) protocolConfig.getOrDefault("dataBits", 8);
         stopBits = (Integer) protocolConfig.getOrDefault("stopBits", 1);
-        parity = (Integer) protocolConfig.getOrDefault("parity", SerialPort.NO_PARITY);
+        String parity1 = (String)protocolConfig.getOrDefault("parity", Parity.even.name());
+        parity = Parity.fromName(parity1).getValue();
         timeout = (Integer) protocolConfig.getOrDefault("timeout", 3000);
         slaveId = (Integer) protocolConfig.getOrDefault("slaveId", 1);
 
@@ -74,8 +77,8 @@ public class ModbusRtuCollector extends BaseCollector {
             cfg.setStopBits(stopBits);
         });
 
-        this.client = ModbusRtuClient.create(transport);
-        this.client.connect();
+        client = ModbusRtuClient.create(transport);
+        client.connect();
 
         log.info(
                 "Modbus RTU 连接成功: {} baud={} dataBits={} stopBits={} parity={}",
@@ -322,7 +325,7 @@ public class ModbusRtuCollector extends BaseCollector {
      */
     private Object readHoldingRegister(ModbusAddress address, String dataType) throws Exception {
         // 使用工具类获取寄存器数量
-        int registerCount = ModbusUtils.getRegisterCount(dataType);
+        int registerCount = DataType.fromString(dataType).getRegisterCount();
 
         CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(
                 slaveId,
@@ -337,7 +340,7 @@ public class ModbusRtuCollector extends BaseCollector {
      */
     private Object readInputRegister(ModbusAddress address, String dataType) throws Exception {
         // 使用工具类获取寄存器数量
-        int registerCount = ModbusUtils.getRegisterCount(dataType);
+        int registerCount = DataType.fromString(dataType).getRegisterCount();
 
         CompletionStage<ReadInputRegistersResponse> future = client.readInputRegistersAsync(
                 slaveId,
@@ -364,7 +367,7 @@ public class ModbusRtuCollector extends BaseCollector {
      */
     private boolean writeHoldingRegister(ModbusAddress address, Object value, String dataType) throws Exception {
         // 使用工具类获取寄存器数量和转换值
-        int registerCount = ModbusUtils.getRegisterCount(dataType);
+        int registerCount = DataType.fromString(dataType).getRegisterCount();
         short[] registers = ModbusUtils.valueToRegisters(value, dataType, byteOrder);
 
         if (registerCount == 1) {
@@ -403,16 +406,10 @@ public class ModbusRtuCollector extends BaseCollector {
         }
 
         // 找到最小和最大地址
-        int minAddress = pointGroup.stream()
-                .mapToInt(gp -> gp.getAddress().getAddress())
-                .min()
-                .orElse(0);
-        int maxAddress = pointGroup.stream()
-                .mapToInt(gp -> gp.getAddress().getAddress())
-                .max()
-                .orElse(0);
-
-        int quantity = maxAddress - minAddress + 1;
+        int[] range = ModbusGroupingUtil.getAddressRange(pointGroup);
+        int minAddress = range[0];
+        //读取几个寄存器
+        int quantity = range[1];
 
         return switch (type) {
             case COIL -> batchReadCoils(pointGroup, minAddress, quantity);
@@ -425,6 +422,11 @@ public class ModbusRtuCollector extends BaseCollector {
 
     /**
      * 批量读取线圈
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
      */
     private Map<String, Object> batchReadCoils(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
         ReadCoilsRequest request = new ReadCoilsRequest(minAddress, quantity);
@@ -451,6 +453,11 @@ public class ModbusRtuCollector extends BaseCollector {
 
     /**
      * 批量读取离散输入
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
      */
     private Map<String, Object> batchReadDiscreteInputs(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
         ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(minAddress, quantity);
@@ -487,15 +494,15 @@ public class ModbusRtuCollector extends BaseCollector {
 
     /**
      * 批量读取保持寄存器
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
      */
     private Map<String, Object> batchReadHoldingRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        // 计算本组总共需要读取多少寄存器
-        int maxRegisters = pointGroup.stream()
-                .mapToInt(gp -> ModbusUtils.getRegisterCount(gp.getPoint().getDataType()))
-                .max()
-                .orElse(1);
 
-        ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(minAddress, maxRegisters);
+        ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(minAddress, quantity);
         CompletionStage<ReadHoldingRegistersResponse> future = client.readHoldingRegistersAsync(slaveId, request);
 
         try {
@@ -521,15 +528,15 @@ public class ModbusRtuCollector extends BaseCollector {
 
     /**
      * 批量读取输入寄存器
+     * @param pointGroup 点位组
+     * @param minAddress 读取开始地址
+     * @param quantity 读取几个寄存器（注意不是结束地址）
+     * @return
+     * @throws Exception
      */
     private Map<String, Object> batchReadInputRegisters(List<GroupedPoint> pointGroup, int minAddress, int quantity) throws Exception {
-        // 计算本组总共需要读取多少寄存器
-        int maxRegisters = pointGroup.stream()
-                .mapToInt(gp -> ModbusUtils.getRegisterCount(gp.getPoint().getDataType()))
-                .max()
-                .orElse(1);
 
-        ReadInputRegistersRequest request = new ReadInputRegistersRequest(minAddress, maxRegisters);
+        ReadInputRegistersRequest request = new ReadInputRegistersRequest(minAddress, quantity);
         CompletionStage<ReadInputRegistersResponse> future = client.readInputRegistersAsync(slaveId, request);
 
         try {
