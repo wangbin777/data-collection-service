@@ -161,66 +161,60 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
      */
     private byte[] executeReadPlan(ModbusReadPlan plan) throws Exception {
 
-        tcpSemaphore.acquire();
-        try {
+        return switch (plan.getRegisterType()) {
 
-            int timeoutMs = 2000 + plan.getQuantity() * 10;
+            case COIL -> {
+                /*var resp = client.readCoilsAsync(plan.getUnitId(),
+                        new ReadCoilsRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
+                ReadCoilsRequest request = new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity());
+                try{
+                    var resp = client.readCoils(plan.getUnitId(),request);
+                    yield resp.coils();
+                }finally {
+                    ReferenceCountUtil.release(request);  // 添加这行
+                }
+            }
 
-            CompletableFuture<?> future = switch (plan.getRegisterType()) {
-                case COIL -> client.readCoilsAsync(plan.getUnitId(),
-                            new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity())
-                    ).toCompletableFuture();
+            case DISCRETE_INPUT -> {
+                /*var resp = client.readDiscreteInputsAsync(plan.getUnitId(),
+                        new ReadDiscreteInputsRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
+                ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity());
+                try{
+                    var resp = client.readDiscreteInputs(plan.getUnitId(),request);
+                    yield resp.inputs();
+                }finally {
+                    ReferenceCountUtil.release(request);
+                }
+            }
 
-                case DISCRETE_INPUT ->  client.readDiscreteInputsAsync(
-                            plan.getUnitId(),
-                            new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity())
-                    ).toCompletableFuture();
+            case HOLDING_REGISTER -> {
+                /*var resp = client.readHoldingRegistersAsync(plan.getUnitId(),
+                        new ReadHoldingRegistersRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
+                ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity());
+                try{
+                    var resp = client.readHoldingRegisters(plan.getUnitId(),request);
+                    yield resp.registers();
+                }finally {
+                    ReferenceCountUtil.release(request);
+                }
+            }
 
-                case HOLDING_REGISTER -> client.readHoldingRegistersAsync(plan.getUnitId(),
-                            new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity())
-                    ).toCompletableFuture();
-
-                case INPUT_REGISTER -> client.readInputRegistersAsync(plan.getUnitId(),
-                            new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity())
-                    ).toCompletableFuture();
-
-            };
-
-            Object resp = future.get(timeoutMs, TimeUnit.MILLISECONDS);
-
-            return extractRaw(resp);
-
-        } finally {
-            tcpSemaphore.release();
-        }
-    }
-
-    /**
-     * 返回结果
-     * @param response
-     * @return
-     */
-    private byte[] extractRaw(Object response) {
-
-        if (response instanceof ReadCoilsResponse r) {
-            return r.coils();
-        }
-
-        if (response instanceof ReadDiscreteInputsResponse r) {
-            return r.inputs();
-        }
-
-        if (response instanceof ReadHoldingRegistersResponse r) {
-            return r.registers();
-        }
-
-        if (response instanceof ReadInputRegistersResponse r) {
-            return r.registers();
-        }
-
-        throw new IllegalArgumentException(
-                "Unsupported Modbus response type: " + response.getClass()
-        );
+            case INPUT_REGISTER -> {
+                /*var resp = client.readInputRegistersAsync(plan.getUnitId(),
+                        new ReadInputRegistersRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
+                ReadInputRegistersRequest request = new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity());
+                try{
+                    var resp = client.readInputRegisters(plan.getUnitId(),request);
+                    yield resp.registers();
+                }finally {
+                    ReferenceCountUtil.release(request);
+                }
+            }
+        };
     }
 
 
