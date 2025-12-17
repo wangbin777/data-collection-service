@@ -72,8 +72,8 @@ public class CollectionScheduler {
     private final ReentrantLock scheduleLock = new ReentrantLock();
 
     // 时间片配置
-    private static final int TIME_SLICE_COUNT = 1;          // 1秒分成10个时间片
-    private static final int TIME_SLICE_INTERVAL = 1000;      // 每个时间片100ms
+    private static final int TIME_SLICE_COUNT = 2;          // 1秒分成10个时间片
+    private static final int TIME_SLICE_INTERVAL = 500;      // 每个时间片100ms
     private static final int MAX_BATCH_SIZE = 50;            // 每批最大点数
     private static final int MAX_CONCURRENT_BATCHES = 32;    // 最大并发批次数
 
@@ -994,9 +994,10 @@ public class CollectionScheduler {
 
             double pointsPerSecond = totalPoints / 60.0;  // 每分钟统计
 
-            log.info("性能统计 - 处理点数: {}/分钟, 成功率: {:.2f}%, 活跃设备: {}",
+            log.info("性能统计 - 处理点总数：{},平均每分钟点数: {}/分钟, 成功率: {}%, 活跃设备: {}",
                     totalPoints,
-                    successfulBatches * 100.0 / (successfulBatches + failedBatches),
+                    pointsPerSecond,
+                    String.format("%.2f",successfulBatches * 100.0 / (successfulBatches + failedBatches)),
                     devicePerformance.size()
             );
 
