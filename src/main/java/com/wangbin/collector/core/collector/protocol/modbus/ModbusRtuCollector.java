@@ -127,12 +127,9 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
             try {
                 byte[] raw = executeReadPlan(plan);
 
-                for (PointOffset po : plan.getPoints()) {
-                    Object value = ModbusUtils.parseValue(
-                            raw,
-                            po.getOffset(),
-                            DataType.valueOf(po.getDataType())
-                    );
+                for (PointOffset po : plan.getPointOffsets()) {
+                    Object value = ModbusUtils.parseValue(raw,po.getOffset(),
+                            DataType.valueOf(po.getDataType()));
                     results.put(po.getPointId(), value);
                 }
 
@@ -144,7 +141,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                         e
                 );
 
-                for (PointOffset po : plan.getPoints()) {
+                for (PointOffset po : plan.getPointOffsets()) {
                     results.put(po.getPointId(), null);
                 }
             }
@@ -164,55 +161,59 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         return switch (plan.getRegisterType()) {
 
             case COIL -> {
-                /*var resp = client.readCoilsAsync(plan.getUnitId(),
+                var resp = client.readCoilsAsync(plan.getUnitId(),
                         new ReadCoilsRequest(plan.getStartAddress(),plan.getQuantity())
-                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
-                ReadCoilsRequest request = new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity());
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+                yield resp.coils();
+                /*ReadCoilsRequest request = new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity());
                 try{
                     var resp = client.readCoils(plan.getUnitId(),request);
                     yield resp.coils();
                 }finally {
                     ReferenceCountUtil.release(request);  // 添加这行
-                }
+                }*/
             }
 
             case DISCRETE_INPUT -> {
-                /*var resp = client.readDiscreteInputsAsync(plan.getUnitId(),
+                var resp = client.readDiscreteInputsAsync(plan.getUnitId(),
                         new ReadDiscreteInputsRequest(plan.getStartAddress(),plan.getQuantity())
-                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
-                ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity());
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+                yield resp.inputs();
+                /*ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity());
                 try{
                     var resp = client.readDiscreteInputs(plan.getUnitId(),request);
                     yield resp.inputs();
                 }finally {
                     ReferenceCountUtil.release(request);
-                }
+                }*/
             }
 
             case HOLDING_REGISTER -> {
-                /*var resp = client.readHoldingRegistersAsync(plan.getUnitId(),
+                var resp = client.readHoldingRegistersAsync(plan.getUnitId(),
                         new ReadHoldingRegistersRequest(plan.getStartAddress(),plan.getQuantity())
-                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
-                ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity());
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+                yield resp.registers();
+                /*ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity());
                 try{
                     var resp = client.readHoldingRegisters(plan.getUnitId(),request);
                     yield resp.registers();
                 }finally {
                     ReferenceCountUtil.release(request);
-                }
+                }*/
             }
 
             case INPUT_REGISTER -> {
-                /*var resp = client.readInputRegistersAsync(plan.getUnitId(),
+                var resp = client.readInputRegistersAsync(plan.getUnitId(),
                         new ReadInputRegistersRequest(plan.getStartAddress(),plan.getQuantity())
-                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);*/
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
                 ReadInputRegistersRequest request = new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity());
-                try{
+                yield resp.registers();
+                /*try{
                     var resp = client.readInputRegisters(plan.getUnitId(),request);
                     yield resp.registers();
                 }finally {
                     ReferenceCountUtil.release(request);
-                }
+                }*/
             }
         };
     }

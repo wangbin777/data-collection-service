@@ -17,5 +17,5 @@ public class ModbusReadPlan {
     private final int startAddress;
     private final int quantity;
 
-    private final List<PointOffset> points;
+    private final List<PointOffset> pointOffsets;
 }

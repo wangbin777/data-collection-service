@@ -120,8 +120,7 @@ public class ModbusGroupingUtil {
 
         int registerCount  = pointGroup.stream()
                 .mapToInt(gp -> DataType.fromString(gp.getPoint().getDataType()).getRegisterCount())
-                .max()
-                .orElse(0);
+                .sum();
 
 
         return new int[]{minAddress, registerCount};

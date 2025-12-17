@@ -30,6 +30,30 @@ public class ModbusReadPlanBuilder {
                 RegisterType type = typeEntry.getKey();
                 List<GroupedPoint> groupedPoints = typeEntry.getValue();
 
+                // 🔴 线圈 / 离散量：强制单读
+                if (type == RegisterType.COIL || type == RegisterType.DISCRETE_INPUT) {
+
+                    for (GroupedPoint gp : groupedPoints) {
+                        int start = gp.getAddress().getAddress();
+
+                        plans.add(new ModbusReadPlan(
+                                deviceId,
+                                unitId,
+                                type,
+                                start,
+                                1,
+                                List.of(new PointOffset(
+                                        gp.getPoint().getPointId(),
+                                        0,
+                                        gp.getPoint().getDataType()
+                                ))
+                        ));
+                    }
+
+                    continue;
+                }
+
+                // 🟢 寄存器：连续合并批量读
                 List<List<GroupedPoint>> continuousGroups =
                         ModbusGroupingUtil.groupByContinuousAddress(groupedPoints);;
 
@@ -57,6 +81,8 @@ public class ModbusReadPlanBuilder {
                             offsets
                     ));
                 }
+
+
             }
         }
 

@@ -3,6 +3,7 @@ package com.wangbin.collector.core.collector.protocol.modbus.utils;
 import com.wangbin.collector.common.enums.DataType;
 import com.digitalpetri.modbus.Crc16;
 
+import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -129,12 +130,67 @@ public class ModbusUtils {
                 case UINT64 -> parseUint64(raw);
                 case BOOLEAN -> parseBoolean(raw);
                 case STRING -> parseString(raw);
+                case DOUBLE -> parseDouble(raw);  // 添加实现
+                case DOUBLE_SWAP -> parseDoubleWordSwap(raw);  // 添加实现
+                case FLOAT64_SWAP -> parseFloat64WordSwap(raw);  // 添加实现
+                case FLOAT64_LITTLE -> parseFloat64LittleEndian(raw);  // 添加实现
             };
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("不支持的数据类型: " + dataType, e);
         }
     }
 
+    // DOUBLE类型 - 标准Big-endian
+    private static Double parseDouble(byte[] raw) {
+        if (raw.length < 8) {
+            byte[] padded = new byte[8];
+            System.arraycopy(raw, 0, padded, 8 - raw.length, raw.length);
+            return ByteBuffer.wrap(padded).getDouble();
+        }
+        return ByteBuffer.wrap(raw).getDouble();
+    }
+
+    // DOUBLE_SWAP - 字节顺序为BADC FEGH
+    private static Double parseDoubleWordSwap(byte[] raw) {
+        if (raw.length < 8) {
+            throw new IllegalArgumentException("DOUBLE_SWAP需要至少8字节");
+        }
+
+        byte[] swapped = new byte[8];
+        // 交换字节顺序：BADC FEGH
+        // 0-1字节与2-3字节交换
+        swapped[0] = raw[2];
+        swapped[1] = raw[3];
+        swapped[2] = raw[0];
+        swapped[3] = raw[1];
+        // 4-5字节与6-7字节交换
+        swapped[4] = raw[6];
+        swapped[5] = raw[7];
+        swapped[6] = raw[4];
+        swapped[7] = raw[5];
+
+        return ByteBuffer.wrap(swapped).getDouble();
+    }
+
+    // FLOAT64_SWAP - 与DOUBLE_SWAP相同，但可能要求更高的精度处理
+    private static Double parseFloat64WordSwap(byte[] raw) {
+        return parseDoubleWordSwap(raw);
+    }
+
+    // FLOAT64_LITTLE - 小端序
+    private static Double parseFloat64LittleEndian(byte[] raw) {
+        if (raw.length < 8) {
+            throw new IllegalArgumentException("FLOAT64_LITTLE需要至少8字节");
+        }
+
+        byte[] reordered = new byte[8];
+        // 小端序转大端序
+        for (int i = 0; i < 8; i++) {
+            reordered[i] = raw[7 - i];
+        }
+
+        return ByteBuffer.wrap(reordered).getDouble();
+    }
     /**
      * 根据偏移寄存器和数据类型解析值
      *
@@ -553,7 +609,7 @@ public class ModbusUtils {
             }
 
             return new String(bytes, 0, length, charsetName);
-        } catch (java.io.UnsupportedEncodingException e) {
+        } catch (UnsupportedEncodingException e) {
             return new String(bytes).replaceAll("\0+$", "");
         }
     }
@@ -570,7 +626,7 @@ public class ModbusUtils {
 
         try {
             return new String(bytes, 1, length, "UTF-8");
-        } catch (java.io.UnsupportedEncodingException e) {
+        } catch (UnsupportedEncodingException e) {
             return new String(bytes, 1, length);
         }
     }
@@ -587,7 +643,7 @@ public class ModbusUtils {
         try {
             String result = new String(bytes, charsetName);
             return result.trim().replaceAll("\0+$", "");
-        } catch (java.io.UnsupportedEncodingException e) {
+        } catch (UnsupportedEncodingException e) {
             String result = new String(bytes);
             return result.trim().replaceAll("\0+$", "");
         }

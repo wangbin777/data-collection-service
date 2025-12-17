@@ -98,7 +98,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             try {
                 byte[] raw = executeReadPlan(plan);
 
-                for (PointOffset po : plan.getPoints()) {
+                for (PointOffset po : plan.getPointOffsets()) {
                     Object value = ModbusUtils.parseValue(
                             raw,
                             po.getOffset(),
@@ -115,7 +115,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                         e
                 );
 
-                for (PointOffset po : plan.getPoints()) {
+                for (PointOffset po : plan.getPointOffsets()) {
                     results.put(po.getPointId(), null);
                 }
             }

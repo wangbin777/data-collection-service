@@ -179,7 +179,7 @@
     "deviceId": "PLC001",
     "deviceName": "西门子S7-1200 PLC",
     "address": "40010",
-    "dataType": "STRING",
+    "dataType": "INT32",
     "readWrite": "RW",
     "collectionMode": "POLLING",
     "priority": 3,
