@@ -31,7 +31,6 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     private ModbusTcpClient client;
     private String host;
     private int port;
-    private final Semaphore tcpSemaphore = new Semaphore(1);
     @Override
     public String getCollectorType() {
         return "ModbusTCP";
@@ -132,38 +131,36 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
      */
     private byte[] executeReadPlan(ModbusReadPlan plan) throws Exception {
 
-        tcpSemaphore.acquire();
-        try {
+        return switch (plan.getRegisterType()) {
 
-            int timeoutMs = 500 + plan.getQuantity() * 20;
+            case COIL -> {
+                var resp = client.readCoilsAsync(plan.getUnitId(),
+                        new ReadCoilsRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+                yield resp.coils();
+            }
 
-            CompletableFuture<?> future = switch (plan.getRegisterType()) {
-                case COIL -> client.readCoilsAsync(plan.getUnitId(),
-                        new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity())
-                ).toCompletableFuture();
+            case DISCRETE_INPUT -> {
+                var resp = client.readDiscreteInputsAsync(plan.getUnitId(),
+                        new ReadDiscreteInputsRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+                yield resp.inputs();
+            }
 
-                case DISCRETE_INPUT ->  client.readDiscreteInputsAsync(
-                        plan.getUnitId(),
-                        new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity())
-                ).toCompletableFuture();
+            case HOLDING_REGISTER -> {
+                var resp = client.readHoldingRegistersAsync(plan.getUnitId(),
+                        new ReadHoldingRegistersRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+                yield resp.registers();
+            }
 
-                case HOLDING_REGISTER -> client.readHoldingRegistersAsync(plan.getUnitId(),
-                        new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity())
-                ).toCompletableFuture();
-
-                case INPUT_REGISTER -> client.readInputRegistersAsync(plan.getUnitId(),
-                        new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity())
-                ).toCompletableFuture();
-
-            };
-
-            Object resp = future.get(timeoutMs, TimeUnit.MILLISECONDS);
-
-            return extractRaw(resp);
-
-        } finally {
-            tcpSemaphore.release();
-        }
+            case INPUT_REGISTER -> {
+                var resp = client.readInputRegistersAsync(plan.getUnitId(),
+                        new ReadInputRegistersRequest(plan.getStartAddress(),plan.getQuantity())
+                ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
+                yield resp.registers();
+            }
+        };
     }
 
     /**

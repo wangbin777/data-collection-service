@@ -95,13 +95,6 @@ public abstract class AbstractModbusCollector extends BaseCollector {
     }
 
     /**
-     * 按连续地址分组
-     */
-    protected List<List<GroupedPoint>> groupContinuousPoints(List<GroupedPoint> points) {
-        return ModbusGroupingUtil.groupByContinuousAddress(points);
-    }
-
-    /**
      * 获取UnitId
      * @param point
      * @return

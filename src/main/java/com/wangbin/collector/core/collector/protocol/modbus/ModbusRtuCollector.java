@@ -165,13 +165,6 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                         new ReadCoilsRequest(plan.getStartAddress(),plan.getQuantity())
                 ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
                 yield resp.coils();
-                /*ReadCoilsRequest request = new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity());
-                try{
-                    var resp = client.readCoils(plan.getUnitId(),request);
-                    yield resp.coils();
-                }finally {
-                    ReferenceCountUtil.release(request);  // 添加这行
-                }*/
             }
 
             case DISCRETE_INPUT -> {
@@ -179,13 +172,6 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                         new ReadDiscreteInputsRequest(plan.getStartAddress(),plan.getQuantity())
                 ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
                 yield resp.inputs();
-                /*ReadDiscreteInputsRequest request = new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity());
-                try{
-                    var resp = client.readDiscreteInputs(plan.getUnitId(),request);
-                    yield resp.inputs();
-                }finally {
-                    ReferenceCountUtil.release(request);
-                }*/
             }
 
             case HOLDING_REGISTER -> {
@@ -193,27 +179,13 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                         new ReadHoldingRegistersRequest(plan.getStartAddress(),plan.getQuantity())
                 ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
                 yield resp.registers();
-                /*ReadHoldingRegistersRequest request = new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity());
-                try{
-                    var resp = client.readHoldingRegisters(plan.getUnitId(),request);
-                    yield resp.registers();
-                }finally {
-                    ReferenceCountUtil.release(request);
-                }*/
             }
 
             case INPUT_REGISTER -> {
                 var resp = client.readInputRegistersAsync(plan.getUnitId(),
                         new ReadInputRegistersRequest(plan.getStartAddress(),plan.getQuantity())
                 ).toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-                ReadInputRegistersRequest request = new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity());
                 yield resp.registers();
-                /*try{
-                    var resp = client.readInputRegisters(plan.getUnitId(),request);
-                    yield resp.registers();
-                }finally {
-                    ReferenceCountUtil.release(request);
-                }*/
             }
         };
     }
