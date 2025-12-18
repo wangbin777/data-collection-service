@@ -25,25 +25,18 @@ public class DataUtils {
             case "PLC002":
                 points = DataUtils.createPLC002DataPoints();
                 break;
-            case "DCS001":
-                points = DataUtils.createDCSDataPoints();
-                break;
-            case "SWITCH001":
-                points = DataUtils.createSwitchDataPoints();
-                break;
-            case "IOT001":
-                points = DataUtils.createIoTDataPoints();
-                break;
-            case "TEST001":
-                points = DataUtils.createTestDataPoints();
+            case "RTU_104_001":
+                points = DataUtils.createRTU104001Points();
                 break;
             default:
-                points = DataUtils.createDefaultDataPoints(deviceId);
+                points = DataUtils.createPLC001DataPoints();
         }
 
         log.info("为设备 {} 生成 {} 个模拟数据点", deviceId, points.size());
         return points;
     }
+
+
 
     /**
      * 创建PLC设备的模拟数据点
@@ -59,135 +52,13 @@ public class DataUtils {
     }
 
     /**
-     * 创建DCS设备的模拟数据点
+     * 创建104协议模拟数据点
+     * @return
      */
-    public static List<DataPoint> createDCSDataPoints() {
-        List<DataPoint> points = new ArrayList<>();
-
-        DataPoint flow1 = new DataPoint();
-        flow1.setId(4L);
-        flow1.setPointId("FLOW001");
-        flow1.setPointCode("FLOW001");
-        flow1.setPointName("流量计1");
-        flow1.setDeviceId("DCS001");
-        flow1.setDeviceName("中控DCS系统");
-        flow1.setAddress("ns=2;s=Flow1");
-        flow1.setDataType("DOUBLE");
-        flow1.setReadWrite("R");
-        flow1.setUnit("m³/h");
-        flow1.setCollectionMode("POLLING");
-        flow1.setStatus(1);
-        points.add(flow1);
-
-        return points;
+    private static List<DataPoint> createRTU104001Points() {
+        return JsonDataPointLoader.loadDataPointsFromJson("mock/modbus-RTU104001-points.json");
     }
 
-    /**
-     * 创建交换机设备的模拟数据点
-     */
-    public static List<DataPoint> createSwitchDataPoints() {
-        List<DataPoint> points = new ArrayList<>();
-
-        DataPoint cpuUsage = new DataPoint();
-        cpuUsage.setId(5L);
-        cpuUsage.setPointId("CPU_USAGE");
-        cpuUsage.setPointCode("CPU_USAGE");
-        cpuUsage.setPointName("CPU使用率");
-        cpuUsage.setDeviceId("SWITCH001");
-        cpuUsage.setDeviceName("华为交换机");
-        cpuUsage.setAddress("1.3.6.1.4.1.2011.6.3.4.1.2.1.1.5.0");
-        cpuUsage.setDataType("INT");
-        cpuUsage.setReadWrite("R");
-        cpuUsage.setUnit("%");
-        cpuUsage.setCollectionMode("POLLING");
-        cpuUsage.setStatus(1);
-        points.add(cpuUsage);
-
-        return points;
-    }
-
-    /**
-     * 创建IoT设备的模拟数据点
-     */
-    public static List<DataPoint> createIoTDataPoints() {
-        List<DataPoint> points = new ArrayList<>();
-
-        DataPoint temp = new DataPoint();
-        temp.setId(6L);
-        temp.setPointId("IOT_TEMP");
-        temp.setPointCode("IOT_TEMP");
-        temp.setPointName("环境温度");
-        temp.setDeviceId("IOT001");
-        temp.setDeviceName("温湿度传感器");
-        temp.setAddress("sensor/temperature");
-        temp.setDataType("FLOAT");
-        temp.setReadWrite("R");
-        temp.setUnit("℃");
-        temp.setCollectionMode("SUBSCRIPTION");
-        temp.setStatus(1);
-        points.add(temp);
-
-        DataPoint humidity = new DataPoint();
-        humidity.setId(7L);
-        humidity.setPointId("IOT_HUM");
-        humidity.setPointCode("IOT_HUM");
-        humidity.setPointName("环境湿度");
-        humidity.setDeviceId("IOT001");
-        humidity.setDeviceName("温湿度传感器");
-        humidity.setAddress("sensor/humidity");
-        humidity.setDataType("FLOAT");
-        humidity.setReadWrite("R");
-        humidity.setUnit("%");
-        humidity.setCollectionMode("SUBSCRIPTION");
-        humidity.setStatus(1);
-        points.add(humidity);
-
-        return points;
-    }
-
-    /**
-     * 创建测试设备的模拟数据点
-     */
-    public static List<DataPoint> createTestDataPoints() {
-        List<DataPoint> points = new ArrayList<>();
-
-        DataPoint test1 = new DataPoint();
-        test1.setId(8L);
-        test1.setPointId("TEST001");
-        test1.setPointCode("TEST001");
-        test1.setPointName("测试数据点");
-        test1.setDeviceId("TEST001");
-        test1.setDeviceName("测试设备");
-        test1.setAddress("40001");
-        test1.setDataType("FLOAT");
-        test1.setReadWrite("R");
-        test1.setStatus(1);
-        points.add(test1);
-
-        return points;
-    }
-
-    /**
-     * 默认数据点
-     */
-    public static List<DataPoint> createDefaultDataPoints(String deviceId) {
-        List<DataPoint> points = new ArrayList<>();
-
-        DataPoint point = new DataPoint();
-        point.setId(9L);
-        point.setPointId(deviceId + "_001");
-        point.setPointCode(deviceId + "_001");
-        point.setPointName("默认数据点");
-        point.setDeviceId(deviceId);
-        point.setDeviceName("未知设备");
-        point.setAddress("0");
-        point.setDataType("FLOAT");
-        point.setReadWrite("R");
-        point.setStatus(1);
-        points.add(point);
-
-        return points;
-    }
 
 
 

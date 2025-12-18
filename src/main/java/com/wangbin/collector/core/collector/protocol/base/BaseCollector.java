@@ -41,7 +41,7 @@ public abstract class BaseCollector implements ProtocolCollector {
     protected AtomicLong totalWriteTime = new AtomicLong(0);
 
     // 订阅的点位
-    protected final Set<String> subscribedPoints = ConcurrentHashMap.newKeySet();
+    protected final Set<String> subscribedPointsSet = ConcurrentHashMap.newKeySet();
 
     // 数据转换器
     protected Map<String, DataConverter> dataConverters = new HashMap<>();
@@ -368,7 +368,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             status.put("connectionStatus", connectionStatus);
             status.put("lastConnectTime", lastConnectTime);
             status.put("lastActivityTime", lastActivityTime);
-            status.put("subscribedPoints", subscribedPoints.size());
+            status.put("subscribedPoints", subscribedPointsSet.size());
             status.put("totalReadCount", totalReadCount.get());
             status.put("totalWriteCount", totalWriteCount.get());
             status.put("totalErrorCount", totalErrorCount.get());
@@ -445,7 +445,7 @@ public abstract class BaseCollector implements ProtocolCollector {
         stats.put("averageWriteTime", avgWriteTime);
         stats.put("lastActivityTime", lastActivityTime);
         stats.put("connectionDuration", connected ? System.currentTimeMillis() - lastConnectTime : 0);
-        stats.put("subscribedPoints", subscribedPoints.size());
+        stats.put("subscribedPoints", subscribedPointsSet.size());
 
         return stats;
     }
