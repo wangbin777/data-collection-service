@@ -10,7 +10,7 @@ import com.wangbin.collector.core.collector.protocol.iec.factory.Iec104AsduFacto
 import com.wangbin.collector.core.collector.protocol.iec.util.Iec104Utils;
 import lombok.extern.slf4j.Slf4j;
 import org.openmuc.j60870.*;
-import org.openmuc.j60870.ie.IeDoubleCommand;
+import org.openmuc.j60870.ie.*;
 
 import java.io.IOException;
 import java.util.*;
@@ -56,24 +56,7 @@ public class Iec104Collector extends AbstractIce104Collector {
                     log.debug("收到ASDU消息: {}", asdu);
                     // TODO: 实现具体的消息处理逻辑
                     // 处理响应数据
-                    handleResponse(asdu);
-                    // 处理站端主动上报的数据
-                    // 这可以用于订阅模式下的实时数据更新
-                    switch (asdu.getTypeIdentification()) {
-                        case M_SP_NA_1:
-                        case M_DP_NA_1:
-                        case M_ME_NA_1:
-                        case M_ME_NB_1:
-                        case M_ME_NC_1:
-                            // 处理测量数据上报
-                            //processDataReport(asdu);
-                            break;
-                        case C_IC_NA_1:
-                            // 处理总召唤响应
-                            //processGeneralInterrogationResponse(asdu);
-                            break;
-                    }
-
+                    handleResponse(conn,asdu);
                     lastActivityTime = System.currentTimeMillis();
                 } catch (Exception e) {
                     handleError("ASDU处理失败", e);
@@ -86,13 +69,13 @@ public class Iec104Collector extends AbstractIce104Collector {
             }
 
             @Override
-            public void dataTransferStateChanged(Connection conn, boolean started) {
-                dataTransferStarted = started;
-                if (started) {
-                    log.info("与客户端的数据传输已启动: {}", conn.getRemoteInetAddress());
-                } else {
-                    doDisconnect();
+            public void dataTransferStateChanged(Connection conn, boolean stopped) {
+                dataTransferStopped = stopped;
+                if (stopped) {
                     log.warn("与客户端的数据传输已停止: {}", conn.getRemoteInetAddress());
+                } else {
+                    //doDisconnect();
+                    log.info("与客户端的数据传输已启动: {}", conn.getRemoteInetAddress());
                 }
             }
         };
@@ -104,8 +87,11 @@ public class Iec104Collector extends AbstractIce104Collector {
 
         Iec104Address address = Iec104Utils.parseAddress(point.getAddress());
         log.debug("读取IEC 104点位: typeId={}, address={}", address.getTypeId(), address.getIoAddress());
+        // 直接使用 Connection 的读取命令
+        connection.readCommand(commonAddress, address.getIoAddress());
 
-        return readValueByType(address);
+        // 等待响应（需要你自己的响应处理逻辑）
+        return waitForResponse(address.getIoAddress(), String.valueOf(address.getTypeId()));
     }
 
     @Override
@@ -131,7 +117,7 @@ public class Iec104Collector extends AbstractIce104Collector {
         log.debug("写入IEC 104点位: typeId={}, address={}, value={}",
                 address.getTypeId(), address.getIoAddress(), value);
 
-        return writeValueByType(address, value);
+        return writeValueByType(address, value,timeTag);
     }
 
     @Override
@@ -186,17 +172,156 @@ public class Iec104Collector extends AbstractIce104Collector {
 
     @Override
     protected Object doExecuteCommand(int unitId, String command, Map<String, Object> params) throws Exception {
+
+        int ql = (int) params.getOrDefault("ql", 0);
+        boolean select = (boolean) params.getOrDefault("select", false);
+        int rctAddress = (int) params.get("address");
+        Object value = params.get("value");
+
         switch (command.toLowerCase()) {
-            case "test_connection":
-                return testConnection();
+            // ============ 控制命令 ============
+            case "single_command":
+                // connection.singleCommand(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeSingleCommand singleCommand)
+                int scAddress = (int) params.get("address");
+                boolean scState = (boolean) params.get("state");
+                IeSingleCommand sc = new IeSingleCommand(scState, 0,false);
+                connection.singleCommand(commonAddress, CauseOfTransmission.ACTIVATION, scAddress, sc);
+                return "单点命令已发送";
+
+            case "single_command_with_timetag":
+                // connection.singleCommandWithTimeTag(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeSingleCommand singleCommand, IeTime56 timeTag)
+                int sctAddress = (int) params.get("address");
+                boolean sctState = (boolean) params.get("state");
+                IeSingleCommand sct = new IeSingleCommand(sctState, 0,false);
+                IeTime56 sctTime = new IeTime56(System.currentTimeMillis());
+                connection.singleCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION, sctAddress, sct, sctTime);
+                return "带时标的单点命令已发送";
+
+            case "double_command":
+                // connection.doubleCommand(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeDoubleCommand doubleCommand)
+                int dcAddress = (int) params.get("address");
+                IeDoubleCommand.DoubleCommandState dcState = Iec104Utils.parseDoubleCommandState(params.get("state"));
+                IeDoubleCommand dc = new IeDoubleCommand(dcState, 0,false);
+                connection.doubleCommand(commonAddress, CauseOfTransmission.ACTIVATION, dcAddress, dc);
+                return "双点命令已发送";
+
+            case "double_command_with_timetag":
+                // connection.doubleCommandWithTimeTag(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeDoubleCommand doubleCommand, IeTime56 timeTag)
+                int dctAddress = (int) params.get("address");
+                IeDoubleCommand.DoubleCommandState dctState = Iec104Utils.parseDoubleCommandState(params.get("state"));
+                IeDoubleCommand dct = new IeDoubleCommand(dctState, 0,false);
+                IeTime56 dctTime = new IeTime56(System.currentTimeMillis());
+                connection.doubleCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION, dctAddress, dct, dctTime);
+                return "带时标的双点命令已发送";
+
+            case "regulating_step_command":
+                // connection.regulatingStepCommand(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeRegulatingStepCommand regulatingStepCommand)
+                IeRegulatingStepCommand.StepCommandState state = IeRegulatingStepCommand.StepCommandState.getInstance(Integer.parseInt(value.toString()));
+                IeRegulatingStepCommand rc = new IeRegulatingStepCommand(state,ql, select);
+                connection.regulatingStepCommand(commonAddress, CauseOfTransmission.ACTIVATION, rctAddress, rc);
+                return "调节步命令已发送";
+
+            case "regulating_step_command_with_timetag":
+                // connection.regulatingStepCommandWithTimeTag(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeRegulatingStepCommand regulatingStepCommand, IeTime56 timeTag)
+                IeRegulatingStepCommand.StepCommandState stateWithTimeTag = IeRegulatingStepCommand.StepCommandState.getInstance(Integer.parseInt(value.toString()));
+                IeRegulatingStepCommand rct = new IeRegulatingStepCommand(stateWithTimeTag,ql, select);
+                IeTime56 rctTime = new IeTime56(System.currentTimeMillis());
+                connection.regulatingStepCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION, rctAddress, rct, rctTime);
+                return "带时标的调节步命令已发送";
+
+            case "set_normalized_value_command":
+                // connection.setNormalizedValueCommand(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeNormalizedValue normalizedValue, IeQualifierOfSetPointCommand qualifier)
+                int snvAddress = (int) params.get("address");
+                float snvValue = (float) params.get("value");
+                IeNormalizedValue snv = new IeNormalizedValue(snvValue);
+                IeQualifierOfSetPointCommand snvQualifier = new IeQualifierOfSetPointCommand(ql, select);
+                connection.setNormalizedValueCommand(commonAddress, CauseOfTransmission.ACTIVATION, snvAddress, snv, snvQualifier);
+                return "规一化设点命令已发送";
+
+            case "set_scaled_value_command":
+                // connection.setScaledValueCommand(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeScaledValue scaledValue, IeQualifierOfSetPointCommand qualifier)
+                int ssvAddress = (int) params.get("address");
+                int ssvValue = (int) params.get("value");
+                IeScaledValue ssv = new IeScaledValue(ssvValue);
+                IeQualifierOfSetPointCommand ssvQualifier = new IeQualifierOfSetPointCommand(ql, select);
+                connection.setScaledValueCommand(commonAddress, CauseOfTransmission.ACTIVATION, ssvAddress, ssv, ssvQualifier);
+                return "标度化设点命令已发送";
+
+            case "set_short_float_command":
+                // connection.setShortFloatCommand(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeShortFloat floatVal, IeQualifierOfSetPointCommand qualifier)
+                int ssfAddress = (int) params.get("address");
+                float ssfValue = (float) params.get("value");
+                IeShortFloat ssf = new IeShortFloat(ssfValue);
+                IeQualifierOfSetPointCommand ssfQualifier = new IeQualifierOfSetPointCommand(ql, select);
+                connection.setShortFloatCommand(commonAddress, CauseOfTransmission.ACTIVATION, ssfAddress, ssf, ssfQualifier);
+                return "短浮点设点命令已发送";
+
+            case "bit_string_command":
+                // connection.bitStringCommand(int commonAddress, CauseOfTransmission cot, int informationObjectAddress, IeBinaryStateInformation binaryStateInformation)
+                int bsAddress = (int) params.get("address");
+                int bsValue = (int) params.get("value");
+                IeBinaryStateInformation bs = new IeBinaryStateInformation(bsValue);
+                connection.bitStringCommand(commonAddress, CauseOfTransmission.ACTIVATION, bsAddress, bs);
+                return "比特串命令已发送";
+
+            // ============ 召唤和系统命令 ============
+            case "interrogation":
             case "general_interrogation":
-                return sendGeneralInterrogation();
-            case "read_single_point":
-                return readSinglePoint(getAddressFromParams(params));
-            case "read_double_point":
-                return readDoublePoint(getAddressFromParams(params));
-            case "read_measured_value":
-                return readMeasuredValue(getAddressFromParams(params));
+                // connection.interrogation(int commonAddress, CauseOfTransmission cot, IeQualifierOfInterrogation qualifier)
+                int qualifierValue = (int) params.getOrDefault("qualifier", 20);
+                IeQualifierOfInterrogation qualifier = new IeQualifierOfInterrogation(qualifierValue);
+                connection.interrogation(commonAddress, CauseOfTransmission.ACTIVATION, qualifier);
+                return "总召唤命令已发送";
+
+            case "counter_interrogation":
+                // connection.counterInterrogation(int commonAddress, CauseOfTransmission cot, IeQualifierOfCounterInterrogation qualifier)
+                //读取当前反向有功电度总和（最常用）
+                int ciRequest = (int) params.getOrDefault("qualifier", 5);
+                int ciFreeze = (int) params.getOrDefault("freeze", 0);
+                IeQualifierOfCounterInterrogation ciQualifier = new IeQualifierOfCounterInterrogation(ciRequest, ciFreeze);
+                connection.counterInterrogation(commonAddress, CauseOfTransmission.ACTIVATION, ciQualifier);
+                return "电度召唤命令已发送";
+
+            case "read_command":
+                // connection.readCommand(int commonAddress, int informationObjectAddress)
+                int rdAddress = (int) params.get("address");
+                connection.readCommand(commonAddress, rdAddress);
+                return "读取命令已发送";
+
+            case "synchronize_clocks":
+            case "clock_synchronization":
+                // connection.synchronizeClocks(int commonAddress, IeTime56 time)
+                IeTime56 time = new IeTime56(System.currentTimeMillis());
+                connection.synchronizeClocks(commonAddress, time);
+                return "时钟同步命令已发送";
+
+            case "test_command":
+                // connection.testCommand(int commonAddress)
+                connection.testCommand(commonAddress);
+                return "测试命令已发送";
+
+            case "test_command_with_timetag":
+                // connection.testCommandWithTimeTag(int commonAddress, IeTestSequenceCounter testSequenceCounter, IeTime56 time)
+                int testSeq = (int) params.getOrDefault("sequence", 0);
+                IeTestSequenceCounter testSeqCounter = new IeTestSequenceCounter(testSeq);
+                IeTime56 testTime = new IeTime56(System.currentTimeMillis());
+                connection.testCommandWithTimeTag(commonAddress, testSeqCounter, testTime);
+                return "带时标的测试命令已发送";
+
+            case "reset_process_command":
+                // connection.resetProcessCommand(int commonAddress, IeQualifierOfResetProcessCommand qualifier)
+                int rpQualifierValue = (int) params.getOrDefault("qualifier", 0);
+                IeQualifierOfResetProcessCommand rpQualifier = new IeQualifierOfResetProcessCommand(rpQualifierValue);
+                connection.resetProcessCommand(commonAddress, rpQualifier);
+                return "复位进程命令已发送";
+
+            case "delay_acquisition_command":
+                // connection.delayAcquisitionCommand(int commonAddress, CauseOfTransmission cot, IeTime16 time)
+                int delayTime = (int) params.getOrDefault("delay", 0);
+                IeTime16 delay = new IeTime16(delayTime);
+                connection.delayAcquisitionCommand(commonAddress, CauseOfTransmission.ACTIVATION, delay);
+                return "延时采集命令已发送";
+
             default:
                 throw new IllegalArgumentException("不支持的IEC 104命令: " + command);
         }
@@ -230,48 +355,20 @@ public class Iec104Collector extends AbstractIce104Collector {
     }
 
 
-    private Object readValueByType(Iec104Address address) throws Exception {
-        // 根据类型ID发送相应的读取请求
-        ASdu readCommand = createReadCommandByType(address);
-
-        // 发送读取命令
-        sendASdu(readCommand);
-
-        // 等待响应
-        CompletableFuture<Object> future = sendReadRequest(
-                address.getIoAddress(),
-                String.valueOf(address.getTypeId())
-        );
-
-        try {
-            // 设置超时
-            return future.get(timeout, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            log.warn("读取点位超时: typeId={}, address={}",
-                    address.getTypeId(), address.getIoAddress());
-            throw new Exception("读取点位超时", e);
-        }
-    }
-
-    private ASdu createReadCommandByType(Iec104Address address) {
-        // 对于各种类型，都可以使用C_RD_NA_1命令
-        return Iec104AsduFactory.createReadCommand(
-                commonAddress,
-                address.getIoAddress(),
-                ASduType.C_RD_NA_1
-        );
-    }
-
-    private boolean writeValueByType(Iec104Address address, Object value) throws Exception {
+    private boolean writeValueByType(Iec104Address address, Object value,boolean timeTag) throws Exception {
         return switch (address.getTypeId()) {
-            case 45 -> // TYPE_SINGLE_COMMAND
-                    writeSingleCommand(address, value);
-            case 46 -> // TYPE_DOUBLE_COMMAND
-                    writeDoubleCommand(address, value); // TYPE_SETPOINT_NORMALIZED
-            // TYPE_SETPOINT_SCALED
-            case 48, 49, 50 -> // TYPE_SETPOINT_FLOAT
-                    writeSetpointCommand(address, value, address.getTypeId());
-            default -> throw new IllegalArgumentException("不支持的信息对象类型: " + address.getTypeId());
+            case 45 -> // C_SC_NA_1: 单点命令
+                    writeSingleCommand(address, value,timeTag);
+            case 46 -> // C_DC_NA_1: 双点命令
+                    writeDoubleCommand(address, value,timeTag);
+            case 47 -> // C_RC_NA_1: 调节步命令
+                    writeRegulatingStepCommand(address, value,timeTag);
+            case 48, 49, 50 -> // C_SE_NA_1, C_SE_NB_1, C_SE_NC_1: 设点命令
+                    writeSetPointCommand(address, value, address.getTypeId(),timeTag);
+            case 51 -> // C_BO_NA_1: 比特串命令
+                    writeBitStringCommand(address, value,timeTag);
+            default ->
+                    throw new IllegalArgumentException("不支持的信息对象类型: " + address.getTypeId());
         };
     }
 
@@ -305,35 +402,194 @@ public class Iec104Collector extends AbstractIce104Collector {
         return null;
     }
 
-    private boolean writeSingleCommand(Iec104Address address, Object value) throws Exception {
+    /**
+     * 发送单点命令
+     * @param address
+     * @param value
+     * @return
+     * @throws Exception
+     */
+    private boolean writeSingleCommand(Iec104Address address, Object value,boolean timeTag) throws Exception {
         boolean commandValue = Boolean.parseBoolean(value.toString());
-        ASdu asdu = Iec104AsduFactory.createSingleCommandAsdu(
-                commonAddress, address.getIoAddress(), commandValue);
+        IeSingleCommand command = new IeSingleCommand(
+                commandValue,
+                0,// qualifier
+                 false
+        );
+        // 直接使用 Connection 的方法
+        if(timeTag){
+            IeTime56 time56 = new IeTime56(System.currentTimeMillis());
+            connection.singleCommandWithTimeTag(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),command,time56
+            );
+        }else{
+            connection.singleCommand(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),command);
+        }
 
-        sendASdu(asdu);
-        log.info("单点命令发送成功，地址: {}, 状态: {}",
-                address.getIoAddress(), commandValue ? "ON" : "OFF");
         return true;
     }
 
-    private boolean writeDoubleCommand(Iec104Address address, Object value) throws Exception {
+    /**
+     * 发送双点命令
+     * @param address
+     * @param value
+     * @return
+     * @throws Exception
+     */
+    private boolean writeDoubleCommand(Iec104Address address, Object value,boolean timeTag) throws Exception {
+        // 解析双点命令状态
         IeDoubleCommand.DoubleCommandState commandState = Iec104Utils.parseDoubleCommandState(value);
-        ASdu asdu = Iec104AsduFactory.createDoubleCommandAsdu(
-                commonAddress, address.getIoAddress(), commandState);
 
-        sendASdu(asdu);
-        log.info("双点命令发送成功，地址: {}, 状态: {}", address.getIoAddress(), commandState);
+        // 创建双点命令信息元素
+        IeDoubleCommand doubleCommand = new IeDoubleCommand(
+                commandState,  // 命令状态：ON/OFF/INVALID
+                0,         // 通常设为false（非选择执行）
+                false              // 限定词（qualifier）
+        );
+
+        // ⭐ 直接使用 Connection 的内置方法
+        if(timeTag){
+            IeTime56 time56 = new IeTime56(System.currentTimeMillis());
+            connection.doubleCommandWithTimeTag(
+                    commonAddress,
+                    CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),
+                    doubleCommand,
+                    time56
+            );
+        }else{
+            connection.doubleCommand(
+                    commonAddress,                      // 站地址
+                    CauseOfTransmission.ACTIVATION,     // 传输原因：激活
+                    address.getIoAddress(),             // 信息对象地址（点地址）
+                    doubleCommand                       // 双点命令值
+            );
+        }
+        log.info("双点命令发送成功，地址: {}, 状态: {}",
+                address.getIoAddress(), commandState);
         return true;
     }
 
-    private boolean writeSetpointCommand(Iec104Address address, Object value, int typeId) throws Exception {
+    /**
+     * 发送设点命令
+     * @param address
+     * @param value
+     * @param typeId
+     * @return
+     * @throws Exception
+     */
+    private boolean writeSetPointCommand(Iec104Address address, Object value, int typeId,boolean timeTag) throws Exception {
         float floatValue = Float.parseFloat(value.toString());
-        ASdu asdu = Iec104AsduFactory.createSetpointCommandAsdu(
-                commonAddress, address.getIoAddress(), typeId, floatValue);
+        // 根据typeId选择对应的Connection方法
+        switch (typeId) {
+            case 48: // C_SE_NA_1: 设点命令，规一化值
+                return writeNormalizedSetpoint(address, floatValue,timeTag);
+            case 49: // C_SE_NB_1: 设点命令，标度化值
+                return writeScaledSetPoint(address, floatValue,timeTag);
+            case 50: // C_SE_NC_1: 设点命令，短浮点数
+                return writeShortFloatSetPoint(address, floatValue,timeTag);
+            default:
+                throw new IllegalArgumentException("不支持的设点命令类型: " + typeId);
+        }
+    }
 
-        sendASdu(asdu);
-        log.info("设点命令发送成功，地址: {}, 类型: {}, 值: {}",
-                address.getIoAddress(), typeId, floatValue);
+    private boolean writeNormalizedSetpoint(Iec104Address address, float value,boolean timeTag) throws Exception {
+        // 将float转换为规一化值（范围通常为-1.0到1.0）
+        IeNormalizedValue normalizedValue = new IeNormalizedValue(value);
+
+        IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(0,false);
+
+        // ⭐ 直接使用 Connection 的方法
+        if(timeTag){
+            IeTime56 time56 = new IeTime56(System.currentTimeMillis());
+            connection.setNormalizedValueCommandWithTimeTag(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),normalizedValue,qualifier,time56);
+        }else{
+            connection.setNormalizedValueCommand(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),normalizedValue,qualifier);
+        }
+
+
+        log.info("规一化设点命令发送成功，地址: {}, 值: {}", address.getIoAddress(), value);
+        return true;
+    }
+
+    private boolean writeScaledSetPoint(Iec104Address address, float value,boolean timeTag) throws Exception {
+        // 将float转换为标度化值（整数）
+        int scaledValue = (int) value;
+        IeScaledValue ieScaledValue = new IeScaledValue(scaledValue);
+        IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(0,false);
+
+        // ⭐ 直接使用 Connection 的方法
+        if(timeTag){
+            IeTime56 time56 = new IeTime56(System.currentTimeMillis());
+            connection.setScaledValueCommandWithTimeTag(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),ieScaledValue,qualifier,time56);
+        }else{
+            connection.setScaledValueCommand(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),ieScaledValue,qualifier);
+        }
+
+
+        log.info("标度化设点命令发送成功，地址: {}, 值: {}", address.getIoAddress(), scaledValue);
+        return true;
+    }
+
+    private boolean writeShortFloatSetPoint(Iec104Address address, float value,boolean timeTag) throws Exception {
+        // 创建短浮点数
+        IeShortFloat shortFloat = new IeShortFloat(value);
+        IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(0,false);
+
+        // ⭐ 直接使用 Connection 的方法
+        if(timeTag){
+            IeTime56 time56 = new IeTime56(System.currentTimeMillis());
+            connection.setShortFloatCommandWithTimeTag(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),shortFloat,qualifier,time56);
+        }else{
+            connection.setShortFloatCommand(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),shortFloat,qualifier);
+        }
+
+        log.info("短浮点设点命令发送成功，地址: {}, 值: {}", address.getIoAddress(), value);
+        return true;
+    }
+
+
+    private boolean writeRegulatingStepCommand(Iec104Address address, Object value,boolean timeTag) throws Exception {
+        // 解析调节步命令
+        IeRegulatingStepCommand.StepCommandState state = IeRegulatingStepCommand.StepCommandState.getInstance(Integer.parseInt(value.toString()));
+        IeRegulatingStepCommand command = new IeRegulatingStepCommand(state, 0,false);
+
+        // ⭐ 使用 Connection 的方法
+        if(timeTag){
+            IeTime56 time56 = new IeTime56(System.currentTimeMillis());
+            connection.regulatingStepCommandWithTimeTag(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),command,time56);
+        }else{
+            connection.regulatingStepCommand(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),command);
+        }
+
+        return true;
+    }
+
+    private boolean writeBitStringCommand(Iec104Address address, Object value,boolean timeTag) throws Exception {
+        // 解析比特串（32位）
+        int bitString = Integer.parseInt(value.toString());
+        IeBinaryStateInformation binaryState = new IeBinaryStateInformation(bitString);
+
+        // ⭐ 使用 Connection 的方法
+        if(timeTag){
+            IeTime56 time56 = new IeTime56(System.currentTimeMillis());
+            connection.bitStringCommandWithTimeTag(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),binaryState,time56);
+        }else{
+            connection.bitStringCommand(commonAddress,CauseOfTransmission.ACTIVATION,
+                    address.getIoAddress(),binaryState);
+        }
+
+
         return true;
     }
 
@@ -367,11 +623,6 @@ public class Iec104Collector extends AbstractIce104Collector {
             log.error("连接测试失败", e);
         }
         return result;
-    }
-
-    private Iec104Address getAddressFromParams(Map<String, Object> params) {
-        String address = (String) params.get("address");
-        return Iec104Utils.parseAddress(address);
     }
 
     private String getDeviceId() {

@@ -25,17 +25,18 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
      *  获取连接
      */
     @Getter
-    private Connection connection;
+    protected Connection connection;
 
     protected String host;
     protected int port = 2404;
     protected int commonAddress = 1;
     protected int timeout = 5000;
+    protected boolean timeTag = true;
 
     /**
      * 数据传输状态
      */
-    protected boolean dataTransferStarted = false;
+    protected boolean dataTransferStopped = true;
 
     // =========== 请求处理相关 ===========
 
@@ -54,23 +55,10 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
 
         Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
         if (protocolConfig != null) {
-            this.commonAddress = getIntValue(protocolConfig, "commonAddress", 1);
-            this.timeout = getIntValue(protocolConfig, "timeout", 5000);
+            this.commonAddress = (int) protocolConfig.getOrDefault("unitId",1);
+            this.timeout = (int) protocolConfig.getOrDefault( "timeout", 5000);
+            this.timeTag = (boolean) protocolConfig.getOrDefault("timeTag",true);
         }
-    }
-
-    /**
-     * 获取整数值
-     */
-    private int getIntValue(Map<String, Object> map, String key, int defaultValue) {
-        if (map.get(key) != null) {
-            try {
-                return Integer.parseInt(map.get(key).toString());
-            } catch (NumberFormatException e) {
-                log.warn("配置项{}格式错误，使用默认值{}", key, defaultValue);
-            }
-        }
-        return defaultValue;
     }
 
     // =========== 连接管理方法 ===========
@@ -106,6 +94,11 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
     public void doDisconnect() {
         if (connection != null) {
             try {
+                // 停止数据传输
+                if (!connection.isStopped()) {
+                    connection.stopDataTransfer();
+                }
+                // 关闭连接
                 connection.close();
                 log.info("IEC 104连接已断开");
             } catch (Exception e) {
@@ -116,25 +109,12 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
         }
     }
 
-    /**
-     * 发送ASDU
-     */
-    protected void sendASdu(ASdu asdu) throws IOException {
-        if (connection == null) {
-            throw new IllegalArgumentException("IEC104 连接未建立，禁止发送 ASDU");
-        }
-        if (!dataTransferStarted) {
-            throw new IllegalArgumentException("IEC104 数据传输未启动，禁止发送 ASDU");
-        }
-        connection.send(asdu);
-    }
-
     // =========== 请求处理相关方法 ===========
 
     /**
      * 发送读取请求并等待响应
      */
-    protected CompletableFuture<Object> sendReadRequest(int ioAddress, String requestType) {
+    protected CompletableFuture<Object> waitForResponse(int ioAddress, String requestType) {
         CompletableFuture<Object> future = new CompletableFuture<>();
         int requestId = generateRequestId(ioAddress, requestType);
 
@@ -153,9 +133,16 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
     /**
      * 处理收到的ASDU响应
      */
-    protected void handleResponse(ASdu asdu) {
+    protected void handleResponse(Connection conn,ASdu asdu) {
         try {
-            // 解析响应中的信息对象
+            if (asdu.isNegativeConfirm() || isErrorCause(asdu.getCauseOfTransmission())) {
+                log.warn("收到错误响应: type={}, cause={}, negative={}",
+                        asdu.getTypeIdentification(),
+                        asdu.getCauseOfTransmission(),
+                        asdu.isNegativeConfirm());
+                return;
+            }
+            // 解析响应
             InformationObject[] ios = asdu.getInformationObjects();
             if (ios == null || ios.length == 0) {
                 return;
@@ -165,14 +152,29 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
                 int ioAddress = io.getInformationObjectAddress();
                 InformationElement[][] elements = io.getInformationElements();
 
-                if (elements != null && elements.length > 0) {
-                    Object value = parseInformationElements(elements[0], asdu.getTypeIdentification());
-                    completeRequest(ioAddress, asdu.getTypeIdentification(), value);
+                // 如果没有信息元素，可能是确认响应
+                if (elements == null || elements.length == 0) {
+                    // 对于读取命令，空响应表示无数据
+                    if (asdu.getTypeIdentification() == ASduType.C_RD_NA_1) {
+                        completeRequest(ioAddress, asdu.getTypeIdentification(), null);
+                    }
+                    continue;
                 }
+
+                // 解析信息元素
+                Object value = parseInformationElements(elements[0], asdu.getTypeIdentification());
+                completeRequest(ioAddress, asdu.getTypeIdentification(), value);
             }
         } catch (Exception e) {
             log.error("处理IEC 104响应失败", e);
         }
+    }
+
+    private boolean isErrorCause(CauseOfTransmission cot) {
+        return cot == CauseOfTransmission.UNKNOWN_COMMON_ADDRESS_OF_ASDU ||
+                cot == CauseOfTransmission.UNKNOWN_INFORMATION_OBJECT_ADDRESS ||
+                cot == CauseOfTransmission.UNKNOWN_TYPE_ID ||
+                cot == CauseOfTransmission.UNKNOWN_CAUSE_OF_TRANSMISSION;
     }
 
     /**
@@ -185,32 +187,27 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
 
         switch (aSduType) {
             case M_SP_NA_1:
-                if (elements[0] instanceof IeSinglePointWithQuality) {
-                    IeSinglePointWithQuality sp = (IeSinglePointWithQuality) elements[0];
+                if (elements[0] instanceof IeSinglePointWithQuality sp) {
                     return sp.isOn();
                 }
                 break;
             case M_DP_NA_1:
-                if (elements[0] instanceof IeDoublePointWithQuality) {
-                    IeDoublePointWithQuality dp = (IeDoublePointWithQuality) elements[0];
+                if (elements[0] instanceof IeDoublePointWithQuality dp) {
                     return dp.getDoublePointInformation().name();
                 }
                 break;
             case M_ME_NA_1:
-                if (elements[0] instanceof IeNormalizedValue) {
-                    IeNormalizedValue nv = (IeNormalizedValue) elements[0];
+                if (elements[0] instanceof IeNormalizedValue nv) {
                     return nv.getUnnormalizedValue();
                 }
                 break;
             case M_ME_NB_1:
-                if (elements[0] instanceof IeScaledValue) {
-                    IeScaledValue sv = (IeScaledValue) elements[0];
+                if (elements[0] instanceof IeScaledValue sv) {
                     return sv.getUnnormalizedValue();
                 }
                 break;
             case M_ME_NC_1:
-                if (elements[0] instanceof IeShortFloat) {
-                    IeShortFloat sf = (IeShortFloat) elements[0];
+                if (elements[0] instanceof IeShortFloat sf) {
                     return sf.getValue();
                 }
                 break;
