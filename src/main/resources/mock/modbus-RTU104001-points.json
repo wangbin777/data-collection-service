@@ -1,7 +1,8 @@
 [
   {
     "id": 201,
-    "unitId": 2,
+    "unitId": 0,
+    "commonAddress": 1,
     "pointId": "SP_BREAKER_STATUS",
     "pointCode": "IOA_1001",
     "pointName": "断路器分合状态",
@@ -20,7 +21,8 @@
   },
   {
     "id": 202,
-    "unitId": 1,
+    "unitId": 0,
+    "commonAddress": 1,
     "pointId": "DP_CIRCUIT_SWITCH",
     "pointCode": "IOA_1002",
     "pointName": "隔离开关位置",
