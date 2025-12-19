@@ -84,7 +84,7 @@ public class Iec104Collector extends AbstractIce104Collector {
     @Override
     protected Object doReadPoint(DataPoint point) throws Exception {
 
-        Iec104Address address = Iec104Utils.parseAddress(point.getAddress());
+        Iec104Address address = Iec104Utils.parseAddress(point.getUnit(),point.getAddress());
         int ioa = address.getIoAddress();
         int typeId = address.getTypeId();
         int key = generateRequestId(ioa);
@@ -118,14 +118,14 @@ public class Iec104Collector extends AbstractIce104Collector {
         Map<String, CompletableFuture<Object>> futures = new HashMap<>();
 
         for (DataPoint point : points) {
-            Iec104Address address = Iec104Utils.parseAddress(point.getAddress());
+            Iec104Address address = Iec104Utils.parseAddress(point.getUnit(),point.getAddress());
             int key = generateRequestId(address.getIoAddress());
             CompletableFuture<Object> future = new CompletableFuture<>();
             pendingRequests.put(key, future);
             futures.put(point.getPointId(), future);
 
             try {
-                connection.readCommand(commonAddress, address.getIoAddress());
+                connection.readCommand(address.getTypeId(), address.getIoAddress());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -154,7 +154,7 @@ public class Iec104Collector extends AbstractIce104Collector {
     @Override
     protected boolean doWritePoint(DataPoint point, Object value) throws Exception {
 
-        Iec104Address address = Iec104Utils.parseAddress(point.getAddress());
+        Iec104Address address = Iec104Utils.parseAddress(point.getUnit(),point.getAddress());
         log.debug("写入IEC 104点位: typeId={}, address={}, value={}",
                 address.getTypeId(), address.getIoAddress(), value);
 

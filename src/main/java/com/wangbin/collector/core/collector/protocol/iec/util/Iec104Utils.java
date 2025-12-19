@@ -12,20 +12,13 @@ public class Iec104Utils {
     /**
      * 解析IEC 104地址
      */
-    public static Iec104Address parseAddress(String addressStr) {
+    public static Iec104Address parseAddress(String commonAddress,String addressStr) {
         if (addressStr == null || addressStr.isEmpty()) {
             throw new IllegalArgumentException("IEC 104地址不能为空");
         }
 
-        String[] parts = addressStr.split(":");
-        if (parts.length != 2) {
-            throw new IllegalArgumentException("IEC 104地址格式错误，应为'类型ID:IO地址': " + addressStr);
-        }
-
         try {
-            int typeId = Integer.parseInt(parts[0].trim());
-            int ioAddress = Integer.parseInt(parts[1].trim());
-            return new Iec104Address(typeId, ioAddress);
+            return new Iec104Address(Integer.parseInt(commonAddress), Integer.parseInt(addressStr));
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("IEC 104地址格式错误，请输入有效的数字: " + addressStr, e);
         }
