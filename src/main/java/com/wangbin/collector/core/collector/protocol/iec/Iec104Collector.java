@@ -54,7 +54,6 @@ public class Iec104Collector extends AbstractIce104Collector {
             public void newASdu(Connection conn, ASdu asdu) {
                 try {
                     log.debug("收到ASDU消息: {}", asdu);
-                    // TODO: 实现具体的消息处理逻辑
                     // 处理响应数据
                     handleResponse(conn,asdu);
                     lastActivityTime = System.currentTimeMillis();
@@ -86,29 +85,71 @@ public class Iec104Collector extends AbstractIce104Collector {
     protected Object doReadPoint(DataPoint point) throws Exception {
 
         Iec104Address address = Iec104Utils.parseAddress(point.getAddress());
-        log.debug("读取IEC 104点位: typeId={}, address={}", address.getTypeId(), address.getIoAddress());
-        // 直接使用 Connection 的读取命令
-        connection.readCommand(commonAddress, address.getIoAddress());
+        int ioa = address.getIoAddress();
+        int typeId = address.getTypeId();
+        int key = generateRequestId(ioa);
 
-        // 等待响应（需要你自己的响应处理逻辑）
-        return waitForResponse(address.getIoAddress(), String.valueOf(address.getTypeId()));
+        CompletableFuture<Object> future = new CompletableFuture<>();
+        pendingRequests.put(key, future);
+
+        log.debug("IEC104 READ → typeId={}, ioa={}", typeId, ioa);
+
+        // ⚠️ 注意：104 的 READ 是“请求数据”，不是直接返回值
+        connection.readCommand(commonAddress, ioa);
+
+        try {
+            // ⏳ 等 ASDU 在 newASdu 里回来
+            Object value = future.get(timeout, TimeUnit.MILLISECONDS);
+
+            if (value instanceof Boolean) return (Boolean) value ? 1 : 0;
+            if (value instanceof IeDoublePointWithQuality.DoublePointInformation)
+                return ((IeDoublePointWithQuality.DoublePointInformation) value).ordinal();
+            return value;
+        } catch (TimeoutException e) {
+            pendingRequests.remove(key);
+            throw new IOException("IEC104 read timeout, ioa=" + ioa);
+        }
     }
+
 
     @Override
     protected Map<String, Object> doReadPoints(List<DataPoint> points) {
-        Map<String, Object> results = new HashMap<>();
+
+        Map<String, CompletableFuture<Object>> futures = new HashMap<>();
 
         for (DataPoint point : points) {
+            Iec104Address address = Iec104Utils.parseAddress(point.getAddress());
+            int key = generateRequestId(address.getIoAddress());
+            CompletableFuture<Object> future = new CompletableFuture<>();
+            pendingRequests.put(key, future);
+            futures.put(point.getPointId(), future);
+
             try {
-                Object value = doReadPoint(point);
-                results.put(point.getPointId(), value);
-            } catch (Exception e) {
-                log.error("读取IEC 104点位失败: {}", point.getPointName(), e);
-                results.put(point.getPointId(), null);
+                connection.readCommand(commonAddress, address.getIoAddress());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
         }
+
+        Map<String, Object> results = new HashMap<>();
+
+        for (Map.Entry<String, CompletableFuture<Object>> entry : futures.entrySet()) {
+            try {
+                Object value = entry.getValue().get(timeout, TimeUnit.MILLISECONDS);
+                if (value instanceof Boolean)
+                    value = (Boolean) value ? 1 : 0;
+                if (value instanceof IeDoublePointWithQuality.DoublePointInformation)
+                    value =((IeDoublePointWithQuality.DoublePointInformation) value).ordinal();
+
+                results.put(entry.getKey(),value);
+            } catch (Exception e) {
+                results.put(entry.getKey(), null);
+            }
+        }
+
         return results;
     }
+
 
     @Override
     protected boolean doWritePoint(DataPoint point, Object value) throws Exception {

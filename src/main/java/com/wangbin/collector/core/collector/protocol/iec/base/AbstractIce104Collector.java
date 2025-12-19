@@ -9,7 +9,9 @@ import org.openmuc.j60870.ie.*;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.*;
 
 /**
@@ -40,7 +42,7 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
 
     // =========== 请求处理相关 ===========
 
-    private final Map<Integer, CompletableFuture<Object>> pendingRequests = new ConcurrentHashMap<>();
+    protected final Map<Integer, CompletableFuture<Object>> pendingRequests = new ConcurrentHashMap<>();
     private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
     private final long defaultTimeout = 5000;  // 默认超时5秒
 
@@ -114,9 +116,9 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
     /**
      * 发送读取请求并等待响应
      */
-    protected CompletableFuture<Object> waitForResponse(int ioAddress, String requestType) {
+    protected Object waitForResponse(int ioAddress) {
         CompletableFuture<Object> future = new CompletableFuture<>();
-        int requestId = generateRequestId(ioAddress, requestType);
+        int requestId = generateRequestId(ioAddress);
 
         pendingRequests.put(requestId, future);
 
@@ -127,48 +129,121 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
             }
         }, defaultTimeout, TimeUnit.MILLISECONDS);
 
-        return future;
+        try {
+            return future.get();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
      * 处理收到的ASDU响应
      */
-    protected void handleResponse(Connection conn,ASdu asdu) {
+    protected Map<String, Object> handleResponse(Connection conn, ASdu asdu) {
+        Map<String, Object> result = new HashMap<>();
+
         try {
-            if (asdu.isNegativeConfirm() || isErrorCause(asdu.getCauseOfTransmission())) {
-                log.warn("收到错误响应: type={}, cause={}, negative={}",
-                        asdu.getTypeIdentification(),
-                        asdu.getCauseOfTransmission(),
-                        asdu.isNegativeConfirm());
-                return;
+            ASduType type = asdu.getTypeIdentification();
+            CauseOfTransmission cot = asdu.getCauseOfTransmission();
+
+            log.debug("IEC104 ASDU: type={}, cot={}, neg={}",
+                    type, cot, asdu.isNegativeConfirm());
+
+            // ========= 1️⃣ 错误处理 =========
+            if (asdu.isNegativeConfirm() || isErrorCause(cot)) {
+                failAllPending(new IOException("IEC104 error: " + cot));
+                return result;
             }
-            // 解析响应
+
             InformationObject[] ios = asdu.getInformationObjects();
             if (ios == null || ios.length == 0) {
-                return;
+                handleEmptyAsdu(asdu);
+                return result;
             }
 
+            boolean isResponse =
+                    cot == CauseOfTransmission.REQUEST ||
+                            cot == CauseOfTransmission.INTERROGATED_BY_STATION;
+
+            // ========= 2️⃣ 逐 IOA 处理 =========
             for (InformationObject io : ios) {
-                int ioAddress = io.getInformationObjectAddress();
+                int ioa = io.getInformationObjectAddress();
                 InformationElement[][] elements = io.getInformationElements();
 
-                // 如果没有信息元素，可能是确认响应
-                if (elements == null || elements.length == 0) {
-                    // 对于读取命令，空响应表示无数据
-                    if (asdu.getTypeIdentification() == ASduType.C_RD_NA_1) {
-                        completeRequest(ioAddress, asdu.getTypeIdentification(), null);
-                    }
-                    continue;
+                Object value = null;
+
+                if (elements != null && elements.length > 0) {
+                    value = parseValue(type, elements[0]);
                 }
 
-                // 解析信息元素
-                Object value = parseInformationElements(elements[0], asdu.getTypeIdentification());
-                completeRequest(ioAddress, asdu.getTypeIdentification(), value);
+                // 统一缓存
+                //updateCache(ioa, type, value, asdu);
+
+                if (isResponse) {
+                    completeRequest(ioa, value);
+                } else {
+                    handleSpontaneous(ioa, type, value, asdu);
+                }
+
+                result.put(String.valueOf(ioa), value);
             }
+
         } catch (Exception e) {
-            log.error("处理IEC 104响应失败", e);
+            log.error("IEC104 handleResponse failed", e);
+        }
+
+        return result;
+    }
+
+
+    private void failAllPending(Exception e) {
+        pendingRequests.forEach((k, f) -> f.completeExceptionally(e));
+        pendingRequests.clear();
+    }
+    private void handleEmptyAsdu(ASdu asdu) {
+        if (asdu.getTypeIdentification() == ASduType.C_IC_NA_1 &&
+                asdu.getCauseOfTransmission() == CauseOfTransmission.ACTIVATION_TERMINATION) {
+
+            log.info("IEC104 总召唤完成");
         }
     }
+    protected void handleSpontaneous(int ioa,ASduType type,Object value,ASdu asdu) {
+        log.debug("IEC104 spontaneous: ioa={}, type={}, value={}",
+                ioa, type, value);
+
+        // TODO: 推送订阅 / 更新缓存 / MQ
+    }
+
+
+    private Object parseValue(ASduType type, InformationElement[] ies) {
+
+        if (ies == null || ies.length == 0) {
+            return null;
+        }
+
+        InformationElement ie = ies[0];
+
+        return switch (type) {
+            // ===== 单点 =====
+            case M_SP_NA_1, M_SP_TB_1 -> ((IeSinglePointWithQuality) ie).isOn();
+            // ===== 双点 =====
+            case M_DP_NA_1, M_DP_TB_1 -> ((IeDoublePointWithQuality) ie)
+                    .getDoublePointInformation();
+            // ===== 规一化值 =====
+            case M_ME_NA_1, M_ME_TA_1 -> ((IeNormalizedValue) ie)
+                    .getUnnormalizedValue();
+            // ===== 标度化值 =====
+            case M_ME_NB_1, M_ME_TB_1 -> ((IeScaledValue) ie)
+                    .getUnnormalizedValue();
+            // ===== 浮点 =====
+            case M_ME_NC_1, M_ME_TC_1 -> ((IeShortFloat) ie).getValue();
+            default -> {
+                log.debug("Unsupported ASDU type: {}", type);
+                yield ie.toString();
+            }
+        };
+    }
+
 
     private boolean isErrorCause(CauseOfTransmission cot) {
         return cot == CauseOfTransmission.UNKNOWN_COMMON_ADDRESS_OF_ASDU ||
@@ -219,8 +294,8 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
     /**
      * 完成请求
      */
-    private void completeRequest(int ioAddress, ASduType aSduType, Object value) {
-        int requestId = generateRequestId(ioAddress, String.valueOf(aSduType.getId()));
+    private void completeRequest(int ioAddress, Object value) {
+        int requestId = generateRequestId(ioAddress);
         CompletableFuture<Object> future = pendingRequests.remove(requestId);
 
         if (future != null) {
@@ -231,8 +306,8 @@ public abstract class AbstractIce104Collector extends BaseCollector  {
     /**
      * 生成请求ID
      */
-    private int generateRequestId(int ioAddress, String requestType) {
-        return (ioAddress << 16) | requestType.hashCode();
+    protected int generateRequestId(int ioAddress) {
+        return Objects.hash(ioAddress);
     }
 
 }
