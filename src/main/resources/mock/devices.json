@@ -40,5 +40,68 @@
   "createTime": "2024-01-01T00:00:00Z",
   "updateTime": "2024-01-15T08:30:00Z",
   "remark": "IEC 104规约终端，支持单点、双点、测量值等标准信息对象"
+},{
+  "id": 3,
+  "deviceId": "PLC002",
+  "deviceName": "西门子S7-1200 PLC",
+  "deviceAlias": "主控PLC",
+  "productKey": "PLC-S7-1200-RTU",
+  "productName": "西门子PLC-RTU",
+  "groupId": "plc_group",
+  "groupName": "PLC设备组",
+  "protocolType": "MODBUS_RTU",
+  "connectionType": "SERIAL",
+  "ipAddress": null,
+  "port": null,
+  "serialPort": "COM4",
+  "baudRate": 9600,
+  "protocolConfig": {
+    "slaveId": 1,
+    "timeout": 3000,
+    "retries": 3,
+    "byteOrder": "ABCD",
+    "dataBits": 8,
+    "stopBits": 1,
+    "parity": "even",
+    "interFrameDelay": 5,
+    "readDelay": 10,
+    "flowControl": "none",
+    "writeTimeout": 1000,
+    "rtsEnabled": false,
+    "dtrEnabled": false,
+    "echo": false,
+    "localMode": false
+  },
+  "connectionConfig": {
+    "keepAlive": true,
+    "reconnectInterval": 5000,
+    "connectTimeout": 3000,
+    "socketTimeout": null,
+    "autoReconnect": true,
+    "clearBuffersOnConnect": true,
+    "discardNullBytes": false,
+    "failureThreshold": 3
+  },
+  "collectionInterval": 1,
+  "reportInterval": 5,
+  "status": "ONLINE",
+  "lastOnlineTime": "2024-01-15T08:30:00Z",
+  "maxRetryCount": 5,
+  "retryCount": 0,
+  "hardwareConfig": {
+    "interfaceType": "RS485",
+    "terminationResistor": false,
+    "polarityInverted": false,
+    "baudRateList": [
+      9600,
+      19200,
+      38400,
+      57600,
+      115200
+    ]
+  },
+  "createTime": "2024-01-01T00:00:00Z",
+  "updateTime": "2024-01-15T08:30:00Z",
+  "remark": "主控PLC设备，通过RS485 Modbus RTU协议通信"
 }
 ]

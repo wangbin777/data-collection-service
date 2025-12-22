@@ -111,7 +111,11 @@ public abstract class AbstractModbusCollector extends BaseCollector {
     protected Map<String, Object> getBaseDeviceStatus(String protocolType) {
         Map<String, Object> status = new HashMap<>();
         status.put("protocol", protocolType);
-        status.put("slaveId", "1");
+        Object configuredSlaveId = null;
+        if (deviceInfo != null && deviceInfo.getProtocolConfig() != null) {
+            configuredSlaveId = deviceInfo.getProtocolConfig().get("slaveId");
+        }
+        status.put("slaveId", configuredSlaveId != null ? String.valueOf(configuredSlaveId) : "1");
         status.put("timeout", timeout);
         status.put("clientConnected", isConnected());
 

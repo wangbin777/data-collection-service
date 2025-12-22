@@ -281,6 +281,7 @@ public class CollectionScheduler {
 
         } catch (Exception e) {
             log.error("设备 {} 批次采集失败", deviceId, e);
+            connectionStates.put(deviceId, new ConnectionState(false, System.currentTimeMillis()));
         } finally {
             long executionTime = System.currentTimeMillis() - startTime;
 
@@ -288,6 +289,7 @@ public class CollectionScheduler {
             if (success) {
                 collectionStatistics.collectionSuccess(deviceId, executionTime);
                 performanceMonitor.recordBatchSuccess(deviceId, points.size(), executionTime);
+                connectionStates.put(deviceId, new ConnectionState(true, System.currentTimeMillis()));
             } else {
                 collectionStatistics.collectionFailed(deviceId);
                 performanceMonitor.recordBatchFailure(deviceId);
