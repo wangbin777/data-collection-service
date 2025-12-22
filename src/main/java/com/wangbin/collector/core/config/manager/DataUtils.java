@@ -56,7 +56,7 @@ public class DataUtils {
      * @return
      */
     private static List<DataPoint> createRTU104001Points() {
-        return JsonDataPointLoader.loadDataPointsFromJson("mock/modbus-RTU104001-points.json");
+        return JsonDataPointLoader.loadDataPointsFromJson("mock/IEC104-RTU104001-points.json");
     }
 
 
