@@ -31,9 +31,9 @@ public abstract class AbstractIce104Collector extends BaseCollector {
 
     protected boolean dataTransferStopped = true;
 
-    protected final Map<Integer, CopyOnWriteArrayList<CompletableFuture<Object>>> pendingRequests = new ConcurrentHashMap<>();
-    protected final Map<Integer, CacheEntry> valueCache = new ConcurrentHashMap<>();
-    protected final Map<Integer, CompletableFuture<Void>> pendingInterrogations = new ConcurrentHashMap<>();
+    protected final Map<Iec104Key, CopyOnWriteArrayList<CompletableFuture<Object>>> pendingRequests = new ConcurrentHashMap<>();
+    protected final Map<Iec104Key, CacheEntry> valueCache = new ConcurrentHashMap<>();
+    protected final Map<InterrogationKey, CompletableFuture<Void>> pendingInterrogations = new ConcurrentHashMap<>();
     protected ScheduledExecutorService interrogationScheduler;
 
     private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
@@ -122,6 +122,7 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         try {
             ASduType type = asdu.getTypeIdentification();
             CauseOfTransmission cot = asdu.getCauseOfTransmission();
+            int commonAddr = asdu.getCommonAddress();
 
             log.debug("IEC104 ASDU: type={}, cot={}, neg={}",
                     type, cot, asdu.isNegativeConfirm());
@@ -155,11 +156,11 @@ public abstract class AbstractIce104Collector extends BaseCollector {
                     value = parseValue(type, elements[0]);
                 }
                 Object normalized = normalizeValue(value);
-                cacheValue(ioa, normalized);
+                cacheValue(commonAddr, ioa, normalized);
 
-                completeRequest(ioa, normalized);
+                completeRequest(commonAddr, ioa, normalized);
                 if (!isResponse) {
-                    handleSpontaneous(ioa, type, normalized, asdu);
+                    handleSpontaneous(commonAddr, ioa, type, normalized, asdu);
                 }
 
                 result.put(String.valueOf(ioa), normalized);
@@ -177,15 +178,15 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         pendingRequests.clear();
     }
 
-    private void cacheValue(int ioa, Object value) {
+    private void cacheValue(int commonAddress, int ioa, Object value) {
         if (value == null) {
             return;
         }
-        valueCache.put(ioa, new CacheEntry(value, System.currentTimeMillis()));
+        valueCache.put(new Iec104Key(commonAddress, ioa), new CacheEntry(value, System.currentTimeMillis()));
     }
 
-    protected Object getCachedValue(int ioa) {
-        CacheEntry entry = valueCache.get(ioa);
+    protected Object getCachedValue(int commonAddress, int ioa) {
+        CacheEntry entry = valueCache.get(new Iec104Key(commonAddress, ioa));
         if (entry == null) {
             return null;
         }
@@ -196,7 +197,7 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         if (System.currentTimeMillis() - entry.timestamp() <= ttl) {
             return entry.value();
         }
-        valueCache.remove(ioa, entry);
+        valueCache.remove(new Iec104Key(commonAddress, ioa), entry);
         return null;
     }
 
@@ -208,7 +209,7 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         }
     }
 
-    protected void handleSpontaneous(int ioa, ASduType type, Object value, ASdu asdu) {
+    protected void handleSpontaneous(int commonAddress, int ioa, ASduType type, Object value, ASdu asdu) {
         log.debug("IEC104 spontaneous: ioa={}, type={}, value={}",
                 ioa, type, value);
     }
@@ -243,16 +244,18 @@ public abstract class AbstractIce104Collector extends BaseCollector {
                 cot == CauseOfTransmission.UNKNOWN_CAUSE_OF_TRANSMISSION;
     }
 
-    private void completeRequest(int ioAddress, Object value) {
-        CopyOnWriteArrayList<CompletableFuture<Object>> futures = pendingRequests.remove(ioAddress);
+    private void completeRequest(int commonAddress, int ioAddress, Object value) {
+        Iec104Key key = new Iec104Key(commonAddress, ioAddress);
+        CopyOnWriteArrayList<CompletableFuture<Object>> futures = pendingRequests.remove(key);
         if (futures != null) {
             futures.forEach(f -> f.complete(value));
         }
     }
 
-    protected CompletableFuture<Object> registerPendingRequest(int ioAddress) {
+    protected CompletableFuture<Object> registerPendingRequest(int commonAddress, int ioAddress) {
         CompletableFuture<Object> future = new CompletableFuture<>();
-        pendingRequests.compute(ioAddress, (key, list) -> {
+        Iec104Key key = new Iec104Key(commonAddress, ioAddress);
+        pendingRequests.compute(key, (k, list) -> {
             if (list == null) {
                 list = new CopyOnWriteArrayList<>();
             }
@@ -261,15 +264,16 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         });
 
         timeoutScheduler.schedule(() -> {
-            if (future.completeExceptionally(new TimeoutException("IEC104 wait timeout for ioa=" + ioAddress))) {
-                removePendingFuture(ioAddress, future);
+            if (future.completeExceptionally(
+                    new TimeoutException("IEC104 wait timeout for ca/ioa=" + commonAddress + "/" + ioAddress))) {
+                removePendingFuture(key, future);
             }
         }, defaultTimeout, TimeUnit.MILLISECONDS);
         return future;
     }
 
-    private void removePendingFuture(int ioAddress, CompletableFuture<Object> future) {
-        pendingRequests.computeIfPresent(ioAddress, (key, list) -> {
+    private void removePendingFuture(Iec104Key key, CompletableFuture<Object> future) {
+        pendingRequests.computeIfPresent(key, (k, list) -> {
             list.remove(future);
             return list.isEmpty() ? null : list;
         });
@@ -287,8 +291,10 @@ public abstract class AbstractIce104Collector extends BaseCollector {
 
     private void handleInterrogationAsdu(ASdu asdu) {
         int qualifier = extractQualifier(asdu);
+        int commonAddr = asdu.getCommonAddress();
         CauseOfTransmission cot = asdu.getCauseOfTransmission();
-        CompletableFuture<Void> future = pendingInterrogations.get(qualifier);
+        InterrogationKey key = new InterrogationKey(commonAddr, qualifier);
+        CompletableFuture<Void> future = pendingInterrogations.get(key);
 
         switch (cot) {
             case ACTIVATION:
@@ -298,12 +304,12 @@ public abstract class AbstractIce104Collector extends BaseCollector {
             case ACTIVATION_TERMINATION:
                 if (future != null) {
                     future.complete(null);
-                    pendingInterrogations.remove(qualifier);
+                    pendingInterrogations.remove(key);
                 }
-                log.info("IEC104 interrogation qualifier {} finished", qualifier);
+                log.info("IEC104 interrogation qualifier {} finished for CA {}", qualifier, commonAddr);
                 break;
             default:
-                log.debug("IEC104 interrogation cot={} qualifier={}", cot, qualifier);
+                log.debug("IEC104 interrogation cot={} qualifier={} ca={}", cot, qualifier, commonAddr);
         }
     }
 
@@ -325,7 +331,7 @@ public abstract class AbstractIce104Collector extends BaseCollector {
 
     private void maybeTriggerGeneralInterrogation(String reason) {
         if (iec104Config != null && iec104Config.isGeneralInterrogationOnConnect()) {
-            triggerInterrogation(20, reason);
+            triggerInterrogation(commonAddress, 20, reason);
         }
     }
 
@@ -341,28 +347,33 @@ public abstract class AbstractIce104Collector extends BaseCollector {
             if (!isConnected()) {
                 return;
             }
-            triggerInterrogation(20, "scheduled");
+            triggerInterrogation(commonAddress, 20, "scheduled");
         }, interval, interval, TimeUnit.MILLISECONDS);
     }
 
     protected void triggerSingleInterrogation(int qualifier, String reason) {
-        triggerInterrogation(qualifier, reason);
+        triggerSingleInterrogation(commonAddress, qualifier, reason);
     }
 
-    private void triggerInterrogation(int qualifier, String reason) {
+    protected void triggerSingleInterrogation(int targetCommonAddress, int qualifier, String reason) {
+        triggerInterrogation(targetCommonAddress, qualifier, reason);
+    }
+
+    private void triggerInterrogation(int targetCommonAddress, int qualifier, String reason) {
         if (connection == null) {
             return;
         }
-        pendingInterrogations.computeIfAbsent(qualifier, key -> {
+        InterrogationKey key = new InterrogationKey(targetCommonAddress, qualifier);
+        pendingInterrogations.computeIfAbsent(key, mapKey -> {
             CompletableFuture<Void> future = new CompletableFuture<>();
             IeQualifierOfInterrogation qoi = new IeQualifierOfInterrogation(qualifier);
             try {
-                connection.interrogation(commonAddress, CauseOfTransmission.ACTIVATION, qoi);
-                log.info("Trigger IEC104 interrogation qualifier={} reason={}", qualifier, reason);
+                connection.interrogation(targetCommonAddress, CauseOfTransmission.ACTIVATION, qoi);
+                log.info("Trigger IEC104 interrogation ca={} qualifier={} reason={}", targetCommonAddress, qualifier, reason);
             } catch (Exception e) {
                 future.completeExceptionally(e);
-                pendingInterrogations.remove(key, future);
-                log.error("Failed to trigger interrogation qualifier={}", qualifier, e);
+                pendingInterrogations.remove(mapKey, future);
+                log.error("Failed to trigger interrogation ca={} qualifier={}", targetCommonAddress, qualifier, e);
             }
             return future;
         });
@@ -379,5 +390,9 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         }
     }
 
+    public static record Iec104Key(int commonAddress, int ioAddress) {}
+
     protected record CacheEntry(Object value, long timestamp) {}
+
+    public static record InterrogationKey(int commonAddress, int qualifier) {}
 }

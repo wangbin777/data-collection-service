@@ -18,7 +18,22 @@ public class Iec104Utils {
         }
 
         try {
-            return new Iec104Address(Integer.parseInt(commonAddress), Integer.parseInt(addressStr));
+            int ca = Integer.parseInt(commonAddress);
+            String raw = addressStr.trim();
+            Integer typeId = null;
+            int ioa;
+
+            if (raw.contains(":")) {
+                String[] parts = raw.split(":");
+                if (parts.length != 2) {
+                    throw new IllegalArgumentException("IEC 104地址格式错误，需为 typeId:ioa 或 ioa");
+                }
+                typeId = Integer.parseInt(parts[0].trim());
+                ioa = Integer.parseInt(parts[1].trim());
+            } else {
+                ioa = Integer.parseInt(raw);
+            }
+            return new Iec104Address(ca, ioa, typeId);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("IEC 104地址格式错误，请输入有效的数字: " + addressStr, e);
         }

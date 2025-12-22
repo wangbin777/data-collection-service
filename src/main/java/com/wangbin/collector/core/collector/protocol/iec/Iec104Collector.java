@@ -72,16 +72,17 @@ public class Iec104Collector extends AbstractIce104Collector {
     protected Object doReadPoint(DataPoint point) throws Exception {
         Iec104Address address = Iec104Utils.parseAddress(resolveCommonAddress(point), point.getAddress());
         int ioa = address.getIoAddress();
+        int ca = address.getCommonAddress();
 
-        Object cached = getCachedValue(ioa);
+        Object cached = getCachedValue(ca, ioa);
         if (cached != null) {
             return cached;
         }
 
-        CompletableFuture<Object> future = registerPendingRequest(ioa);
+        CompletableFuture<Object> future = registerPendingRequest(ca, ioa);
 
-        if (!maybeTriggerSingleInterrogation(point)) {
-            connection.readCommand(commonAddress, ioa);
+        if (!maybeTriggerSingleInterrogation(point, address)) {
+            connection.readCommand(ca, ioa);
         }
 
         try {
@@ -102,29 +103,34 @@ public class Iec104Collector extends AbstractIce104Collector {
     protected Map<String, Object> doReadPoints(List<DataPoint> points) {
         Map<String, Object> results = new HashMap<>();
         Map<String, CompletableFuture<Object>> futures = new HashMap<>();
-        Map<Integer, DataPoint> pending = new HashMap<>();
+        Map<Iec104Key, DataPoint> pendingPoints = new LinkedHashMap<>();
+        Map<Iec104Key, Iec104Address> pendingAddresses = new HashMap<>();
 
         for (DataPoint point : points) {
             Iec104Address address = Iec104Utils.parseAddress(resolveCommonAddress(point), point.getAddress());
-            Object cached = getCachedValue(address.getIoAddress());
+            Object cached = getCachedValue(address.getCommonAddress(), address.getIoAddress());
             if (cached != null) {
                 results.put(point.getPointId(), cached);
                 continue;
             }
 
-            CompletableFuture<Object> future = registerPendingRequest(address.getIoAddress());
+            CompletableFuture<Object> future = registerPendingRequest(address.getCommonAddress(), address.getIoAddress());
             futures.put(point.getPointId(), future);
-            pending.put(address.getIoAddress(), point);
+
+            Iec104Key key = new Iec104Key(address.getCommonAddress(), address.getIoAddress());
+            pendingPoints.putIfAbsent(key, point);
+            pendingAddresses.putIfAbsent(key, address);
         }
 
-        Set<Integer> triggeredQualifiers = new HashSet<>();
-        for (Map.Entry<Integer, DataPoint> entry : pending.entrySet()) {
+        Set<InterrogationKey> triggeredQualifiers = new HashSet<>();
+        for (Map.Entry<Iec104Key, DataPoint> entry : pendingPoints.entrySet()) {
+            Iec104Key key = entry.getKey();
             DataPoint point = entry.getValue();
-            Iec104Address address = Iec104Utils.parseAddress(resolveCommonAddress(point), point.getAddress());
-            boolean triggered = maybeTriggerSingleInterrogation(point, triggeredQualifiers);
+            Iec104Address address = pendingAddresses.get(key);
+            boolean triggered = maybeTriggerSingleInterrogation(point, address, triggeredQualifiers);
             if (!triggered) {
                 try {
-                    connection.readCommand(commonAddress, address.getIoAddress());
+                    connection.readCommand(key.commonAddress(), key.ioAddress());
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -152,9 +158,10 @@ public class Iec104Collector extends AbstractIce104Collector {
     @Override
     protected boolean doWritePoint(DataPoint point, Object value) throws Exception {
         Iec104Address address = Iec104Utils.parseAddress(resolveCommonAddress(point), point.getAddress());
-        log.debug("Write IEC104 point: typeId={}, address={}, value={}",
-                address.getTypeId(), address.getIoAddress(), value);
-        return writeValueByType(address, value, timeTag);
+        int typeId = resolveWriteTypeId(point, address);
+        log.debug("Write IEC104 point: typeId={}, ca={}, address={}, value={}",
+                typeId, address.getCommonAddress(), address.getIoAddress(), value);
+        return writeValueByType(address, typeId, value, timeTag);
     }
 
     @Override
@@ -208,6 +215,7 @@ public class Iec104Collector extends AbstractIce104Collector {
 
     @Override
     protected Object doExecuteCommand(int unitId, String command, Map<String, Object> params) throws Exception {
+        int ca = resolveCommandCommonAddress(unitId, params);
         int ql = (int) params.getOrDefault("ql", 0);
         boolean select = (boolean) params.getOrDefault("select", false);
         int rctAddress = (int) params.getOrDefault("address", 0);
@@ -218,7 +226,7 @@ public class Iec104Collector extends AbstractIce104Collector {
                 int address = (int) params.get("address");
                 boolean state = (boolean) params.get("state");
                 IeSingleCommand sc = new IeSingleCommand(state, 0, false);
-                connection.singleCommand(commonAddress, CauseOfTransmission.ACTIVATION, address, sc);
+                connection.singleCommand(ca, CauseOfTransmission.ACTIVATION, address, sc);
                 return "single command sent";
             }
             case "single_command_with_timetag": {
@@ -226,14 +234,14 @@ public class Iec104Collector extends AbstractIce104Collector {
                 boolean state = (boolean) params.get("state");
                 IeSingleCommand sc = new IeSingleCommand(state, 0, false);
                 IeTime56 time = new IeTime56(System.currentTimeMillis());
-                connection.singleCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION, address, sc, time);
+                connection.singleCommandWithTimeTag(ca, CauseOfTransmission.ACTIVATION, address, sc, time);
                 return "single command with time tag sent";
             }
             case "double_command": {
                 int address = (int) params.get("address");
                 IeDoubleCommand.DoubleCommandState state = Iec104Utils.parseDoubleCommandState(params.get("state"));
                 IeDoubleCommand dc = new IeDoubleCommand(state, 0, false);
-                connection.doubleCommand(commonAddress, CauseOfTransmission.ACTIVATION, address, dc);
+                connection.doubleCommand(ca, CauseOfTransmission.ACTIVATION, address, dc);
                 return "double command sent";
             }
             case "double_command_with_timetag": {
@@ -241,14 +249,14 @@ public class Iec104Collector extends AbstractIce104Collector {
                 IeDoubleCommand.DoubleCommandState state = Iec104Utils.parseDoubleCommandState(params.get("state"));
                 IeDoubleCommand dc = new IeDoubleCommand(state, 0, false);
                 IeTime56 time = new IeTime56(System.currentTimeMillis());
-                connection.doubleCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION, address, dc, time);
+                connection.doubleCommandWithTimeTag(ca, CauseOfTransmission.ACTIVATION, address, dc, time);
                 return "double command with time tag sent";
             }
             case "regulating_step_command": {
                 IeRegulatingStepCommand.StepCommandState state =
                         IeRegulatingStepCommand.StepCommandState.getInstance(Integer.parseInt(value.toString()));
                 IeRegulatingStepCommand rc = new IeRegulatingStepCommand(state, ql, select);
-                connection.regulatingStepCommand(commonAddress, CauseOfTransmission.ACTIVATION, rctAddress, rc);
+                connection.regulatingStepCommand(ca, CauseOfTransmission.ACTIVATION, rctAddress, rc);
                 return "regulating step sent";
             }
             case "regulating_step_command_with_timetag": {
@@ -256,7 +264,7 @@ public class Iec104Collector extends AbstractIce104Collector {
                         IeRegulatingStepCommand.StepCommandState.getInstance(Integer.parseInt(value.toString()));
                 IeRegulatingStepCommand rc = new IeRegulatingStepCommand(state, ql, select);
                 IeTime56 time = new IeTime56(System.currentTimeMillis());
-                connection.regulatingStepCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION, rctAddress, rc, time);
+                connection.regulatingStepCommandWithTimeTag(ca, CauseOfTransmission.ACTIVATION, rctAddress, rc, time);
                 return "regulating step with time tag sent";
             }
             case "set_normalized_value_command": {
@@ -264,7 +272,7 @@ public class Iec104Collector extends AbstractIce104Collector {
                 float val = ((Number) params.get("value")).floatValue();
                 IeNormalizedValue normalizedValue = new IeNormalizedValue(val);
                 IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(ql, select);
-                connection.setNormalizedValueCommand(commonAddress, CauseOfTransmission.ACTIVATION, address, normalizedValue, qualifier);
+                connection.setNormalizedValueCommand(ca, CauseOfTransmission.ACTIVATION, address, normalizedValue, qualifier);
                 return "normalized set point sent";
             }
             case "set_scaled_value_command": {
@@ -272,7 +280,7 @@ public class Iec104Collector extends AbstractIce104Collector {
                 int val = ((Number) params.get("value")).intValue();
                 IeScaledValue scaledValue = new IeScaledValue(val);
                 IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(ql, select);
-                connection.setScaledValueCommand(commonAddress, CauseOfTransmission.ACTIVATION, address, scaledValue, qualifier);
+                connection.setScaledValueCommand(ca, CauseOfTransmission.ACTIVATION, address, scaledValue, qualifier);
                 return "scaled set point sent";
             }
             case "set_short_float_command": {
@@ -280,62 +288,62 @@ public class Iec104Collector extends AbstractIce104Collector {
                 float val = ((Number) params.get("value")).floatValue();
                 IeShortFloat shortFloat = new IeShortFloat(val);
                 IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(ql, select);
-                connection.setShortFloatCommand(commonAddress, CauseOfTransmission.ACTIVATION, address, shortFloat, qualifier);
+                connection.setShortFloatCommand(ca, CauseOfTransmission.ACTIVATION, address, shortFloat, qualifier);
                 return "short float set point sent";
             }
             case "bit_string_command": {
                 int address = (int) params.get("address");
                 int val = ((Number) params.get("value")).intValue();
                 IeBinaryStateInformation bs = new IeBinaryStateInformation(val);
-                connection.bitStringCommand(commonAddress, CauseOfTransmission.ACTIVATION, address, bs);
+                connection.bitStringCommand(ca, CauseOfTransmission.ACTIVATION, address, bs);
                 return "bit string command sent";
             }
             case "interrogation":
             case "general_interrogation": {
                 int qualifierValue = (int) params.getOrDefault("qualifier", 20);
                 IeQualifierOfInterrogation qualifier = new IeQualifierOfInterrogation(qualifierValue);
-                connection.interrogation(commonAddress, CauseOfTransmission.ACTIVATION, qualifier);
+                connection.interrogation(ca, CauseOfTransmission.ACTIVATION, qualifier);
                 return "general interrogation sent";
             }
             case "counter_interrogation": {
                 int qualifierValue = (int) params.getOrDefault("qualifier", 5);
                 int freeze = (int) params.getOrDefault("freeze", 0);
                 IeQualifierOfCounterInterrogation qualifier = new IeQualifierOfCounterInterrogation(qualifierValue, freeze);
-                connection.counterInterrogation(commonAddress, CauseOfTransmission.ACTIVATION, qualifier);
+                connection.counterInterrogation(ca, CauseOfTransmission.ACTIVATION, qualifier);
                 return "counter interrogation sent";
             }
             case "read_command": {
                 int address = (int) params.get("address");
-                connection.readCommand(commonAddress, address);
+                connection.readCommand(ca, address);
                 return "read command sent";
             }
             case "synchronize_clocks":
             case "clock_synchronization": {
                 IeTime56 time = new IeTime56(System.currentTimeMillis());
-                connection.synchronizeClocks(commonAddress, time);
+                connection.synchronizeClocks(ca, time);
                 return "clock synchronization sent";
             }
             case "test_command": {
-                connection.testCommand(commonAddress);
+                connection.testCommand(ca);
                 return "test command sent";
             }
             case "test_command_with_timetag": {
                 int sequence = (int) params.getOrDefault("sequence", 0);
                 IeTestSequenceCounter counter = new IeTestSequenceCounter(sequence);
                 IeTime56 time = new IeTime56(System.currentTimeMillis());
-                connection.testCommandWithTimeTag(commonAddress, counter, time);
+                connection.testCommandWithTimeTag(ca, counter, time);
                 return "test command with time tag sent";
             }
             case "reset_process_command": {
                 int qualifierValue = (int) params.getOrDefault("qualifier", 0);
                 IeQualifierOfResetProcessCommand qualifier = new IeQualifierOfResetProcessCommand(qualifierValue);
-                connection.resetProcessCommand(commonAddress, qualifier);
+                connection.resetProcessCommand(ca, qualifier);
                 return "reset process command sent";
             }
             case "delay_acquisition_command": {
                 int delay = (int) params.getOrDefault("delay", 0);
                 IeTime16 ieDelay = new IeTime16(delay);
-                connection.delayAcquisitionCommand(commonAddress, CauseOfTransmission.ACTIVATION, ieDelay);
+                connection.delayAcquisitionCommand(ca, CauseOfTransmission.ACTIVATION, ieDelay);
                 return "delay acquisition command sent";
             }
             default:
@@ -366,12 +374,17 @@ public class Iec104Collector extends AbstractIce104Collector {
         log.error(message, e);
     }
 
-    private boolean maybeTriggerSingleInterrogation(DataPoint point) {
-        return maybeTriggerSingleInterrogation(point, null);
+    private boolean maybeTriggerSingleInterrogation(DataPoint point, Iec104Address address) {
+        return maybeTriggerSingleInterrogation(point, address, null);
     }
 
-    private boolean maybeTriggerSingleInterrogation(DataPoint point, Set<Integer> triggered) {
+    private boolean maybeTriggerSingleInterrogation(DataPoint point,
+                                                    Iec104Address address,
+                                                    Set<InterrogationKey> triggered) {
         if (iec104Config == null || !iec104Config.isSingleInterrogationOnReadMiss()) {
+            return false;
+        }
+        if (address == null) {
             return false;
         }
 
@@ -380,13 +393,14 @@ public class Iec104Collector extends AbstractIce104Collector {
             return false;
         }
 
+        InterrogationKey key = new InterrogationKey(address.getCommonAddress(), qualifier);
         if (triggered != null) {
-            if (!triggered.add(qualifier)) {
+            if (!triggered.add(key)) {
                 return true;
             }
         }
 
-        triggerSingleInterrogation(qualifier, "read-miss");
+        triggerSingleInterrogation(key.commonAddress(), key.qualifier(), "read-miss");
         return true;
     }
 
@@ -427,14 +441,104 @@ public class Iec104Collector extends AbstractIce104Collector {
         return String.valueOf(commonAddress);
     }
 
-    private boolean writeValueByType(Iec104Address address, Object value, boolean timeTag) throws Exception {
-        return switch (address.getTypeId()) {
+    private int resolveWriteTypeId(DataPoint point, Iec104Address address) {
+        Integer typeId = address.getTypeId();
+        if (typeId == null) {
+            typeId = extractConfiguredTypeId(point);
+        }
+        if (typeId == null) {
+            String pointName = point != null ? point.getPointName() : "unknown";
+            throw new IllegalArgumentException("IEC104写入缺少typeId, point=" + pointName);
+        }
+        return typeId;
+    }
+
+    private Integer extractConfiguredTypeId(DataPoint point) {
+        if (point == null) {
+            return null;
+        }
+        Integer configured = parseInteger(point.getAdditionalConfig("typeId"));
+        if (configured != null) {
+            return configured;
+        }
+        configured = parseInteger(point.getAdditionalConfig("iecTypeId"));
+        if (configured != null) {
+            return configured;
+        }
+        configured = parseInteger(point.getAdditionalConfig("writeTypeId"));
+        if (configured != null) {
+            return configured;
+        }
+        Object registerType = point.getAdditionalConfig("registerType");
+        if (registerType != null) {
+            return mapRegisterTypeToTypeId(registerType.toString());
+        }
+        return null;
+    }
+
+    private Integer mapRegisterTypeToTypeId(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        return switch (raw.trim().toUpperCase()) {
+            case "SINGLE_COMMAND", "C_SC_NA_1" -> 45;
+            case "DOUBLE_COMMAND", "C_DC_NA_1" -> 46;
+            case "REGULATING_STEP", "REGULATING_STEP_COMMAND", "STEP_COMMAND", "C_RC_NA_1" -> 47;
+            case "SETPOINT_NORMALIZED", "SET_POINT_NORMALIZED", "C_SE_NA_1" -> 48;
+            case "SETPOINT_SCALED", "SET_POINT_SCALED", "C_SE_NB_1" -> 49;
+            case "SETPOINT_SHORT_FLOAT", "SETPOINT_FLOAT", "C_SE_NC_1" -> 50;
+            case "BITSTRING", "BIT_STRING", "C_BO_NA_1" -> 51;
+            default -> null;
+        };
+    }
+
+    private int resolveCommandCommonAddress(int unitId, Map<String, Object> params) {
+        Integer override = null;
+        if (params != null) {
+            override = parseInteger(params.get("commonAddress"));
+            if (override == null) {
+                override = parseInteger(params.get("ca"));
+            }
+            if (override == null) {
+                override = parseInteger(params.get("unitId"));
+            }
+        }
+        if (override != null) {
+            return override;
+        }
+        if (unitId > 0) {
+            return unitId;
+        }
+        return commonAddress;
+    }
+
+    private Integer parseInteger(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        String text = raw.toString();
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+            log.debug("Invalid IEC104 integer: {}", text);
+            return null;
+        }
+    }
+
+    private boolean writeValueByType(Iec104Address address, int typeId, Object value, boolean timeTag) throws Exception {
+        return switch (typeId) {
             case 45 -> writeSingleCommand(address, value, timeTag);
             case 46 -> writeDoubleCommand(address, value, timeTag);
             case 47 -> writeRegulatingStepCommand(address, value, timeTag);
-            case 48, 49, 50 -> writeSetPointCommand(address, value, address.getTypeId(), timeTag);
+            case 48, 49, 50 -> writeSetPointCommand(address, value, typeId, timeTag);
             case 51 -> writeBitStringCommand(address, value, timeTag);
-            default -> throw new IllegalArgumentException("Unsupported type: " + address.getTypeId());
+            default -> throw new IllegalArgumentException("Unsupported type: " + typeId);
         };
     }
 
@@ -443,10 +547,10 @@ public class Iec104Collector extends AbstractIce104Collector {
         IeSingleCommand command = new IeSingleCommand(commandValue, 0, false);
         if (timeTag) {
             IeTime56 time = new IeTime56(System.currentTimeMillis());
-            connection.singleCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.singleCommandWithTimeTag(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), command, time);
         } else {
-            connection.singleCommand(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.singleCommand(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), command);
         }
         return true;
@@ -457,10 +561,10 @@ public class Iec104Collector extends AbstractIce104Collector {
         IeDoubleCommand command = new IeDoubleCommand(state, 0, false);
         if (timeTag) {
             IeTime56 time = new IeTime56(System.currentTimeMillis());
-            connection.doubleCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.doubleCommandWithTimeTag(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), command, time);
         } else {
-            connection.doubleCommand(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.doubleCommand(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), command);
         }
         return true;
@@ -481,10 +585,10 @@ public class Iec104Collector extends AbstractIce104Collector {
         IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(0, false);
         if (timeTag) {
             IeTime56 time = new IeTime56(System.currentTimeMillis());
-            connection.setNormalizedValueCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.setNormalizedValueCommandWithTimeTag(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), normalizedValue, qualifier, time);
         } else {
-            connection.setNormalizedValueCommand(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.setNormalizedValueCommand(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), normalizedValue, qualifier);
         }
         return true;
@@ -496,10 +600,10 @@ public class Iec104Collector extends AbstractIce104Collector {
         IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(0, false);
         if (timeTag) {
             IeTime56 time = new IeTime56(System.currentTimeMillis());
-            connection.setScaledValueCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.setScaledValueCommandWithTimeTag(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), scaled, qualifier, time);
         } else {
-            connection.setScaledValueCommand(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.setScaledValueCommand(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), scaled, qualifier);
         }
         return true;
@@ -510,10 +614,10 @@ public class Iec104Collector extends AbstractIce104Collector {
         IeQualifierOfSetPointCommand qualifier = new IeQualifierOfSetPointCommand(0, false);
         if (timeTag) {
             IeTime56 time = new IeTime56(System.currentTimeMillis());
-            connection.setShortFloatCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.setShortFloatCommandWithTimeTag(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), shortFloat, qualifier, time);
         } else {
-            connection.setShortFloatCommand(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.setShortFloatCommand(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), shortFloat, qualifier);
         }
         return true;
@@ -525,10 +629,10 @@ public class Iec104Collector extends AbstractIce104Collector {
         IeRegulatingStepCommand command = new IeRegulatingStepCommand(state, 0, false);
         if (timeTag) {
             IeTime56 time = new IeTime56(System.currentTimeMillis());
-            connection.regulatingStepCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.regulatingStepCommandWithTimeTag(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), command, time);
         } else {
-            connection.regulatingStepCommand(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.regulatingStepCommand(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), command);
         }
         return true;
@@ -539,10 +643,10 @@ public class Iec104Collector extends AbstractIce104Collector {
         IeBinaryStateInformation bits = new IeBinaryStateInformation(bitString);
         if (timeTag) {
             IeTime56 time = new IeTime56(System.currentTimeMillis());
-            connection.bitStringCommandWithTimeTag(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.bitStringCommandWithTimeTag(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), bits, time);
         } else {
-            connection.bitStringCommand(commonAddress, CauseOfTransmission.ACTIVATION,
+            connection.bitStringCommand(address.getCommonAddress(), CauseOfTransmission.ACTIVATION,
                     address.getIoAddress(), bits);
         }
         return true;
