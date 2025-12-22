@@ -154,6 +154,7 @@ public class JsonDataPointLoader {
                 if (map.containsKey("collectionMode")) point.setCollectionMode((String) map.get("collectionMode"));
                 //if (map.containsKey("description")) point.setDescription((String) map.get("description"));
                 if (map.containsKey("unit")) point.setUnit((String) map.get("unit"));
+                if (map.containsKey("unitId")) point.setUnitId(toInteger(map.get("unitId")));
                 //if (map.containsKey("defaultValue")) point.setDefaultValue((String) map.get("defaultValue"));
 
                 // 设置数值属性
@@ -174,6 +175,24 @@ public class JsonDataPointLoader {
                 // 设置复杂属性
                 if (map.containsKey("alarmRule")) point.setAlarmRule((String) map.get("alarmRule"));
                 if (map.containsKey("remark")) point.setRemark((String) map.get("remark"));
+
+                Map<String, Object> additional = point.getAdditionalConfig() != null
+                        ? new java.util.HashMap<>(point.getAdditionalConfig())
+                        : new java.util.HashMap<>();
+
+                if (map.containsKey("commonAddress")) {
+                    additional.put("commonAddress", map.get("commonAddress"));
+                }
+                if (map.containsKey("registerType")) {
+                    additional.put("registerType", map.get("registerType"));
+                }
+                if (map.containsKey("defaultValue")) {
+                    additional.put("defaultValue", map.get("defaultValue"));
+                }
+
+                if (!additional.isEmpty()) {
+                    point.setAdditionalConfig(additional);
+                }
 
                 dataPoints.add(point);
 

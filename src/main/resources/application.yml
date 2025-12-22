@@ -211,6 +211,16 @@ collector:
         server1: opc.tcp://localhost:4840
         server2: opc.tcp://192.168.1.200:4840
 
+    iec104:
+      timeout: 5000
+      retries: 3
+      common-address: 1
+      general-interrogation-on-connect: true
+      general-interrogation-interval: 600000
+      single-interrogation-on-read-miss: true
+      single-interrogation-group-field: groupId
+      cache-ttl: 5000
+
     # SNMP协议配置
     snmp:
       community: public

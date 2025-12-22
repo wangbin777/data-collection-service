@@ -108,6 +108,11 @@ public class CollectorProperties {
         private int timeout = 5000;
         private int retries = 3;
         private int commonAddress = 1;
+        private boolean generalInterrogationOnConnect = true;
+        private long generalInterrogationInterval = 600000;
+        private boolean singleInterrogationOnReadMiss = true;
+        private long cacheTtl = 5000;
+        private String singleInterrogationGroupField = "groupId";
         private Map<String, String> stations;
     }
 
