@@ -43,7 +43,7 @@ public class Iec104Collector extends AbstractIce104Collector {
             @Override
             public void newASdu(Connection conn, ASdu asdu) {
                 try {
-                    log.debug("Receive ASDU: {}", asdu);
+                    //log.debug("Receive ASDU: {}", asdu);
                     handleResponse(conn, asdu);
                     lastActivityTime = System.currentTimeMillis();
                 } catch (Exception e) {
