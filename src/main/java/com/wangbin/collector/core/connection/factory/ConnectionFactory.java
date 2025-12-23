@@ -23,21 +23,16 @@ public class ConnectionFactory {
 
         String connectionType = config.getConnectionType().toUpperCase();
 
-        switch (connectionType) {
-            case "TCP":
-                return createTcpConnection(config);
-            case "HTTP":
-                return createHttpConnection(config);
-            case "MQTT":
-                return createMqttConnection(config);
-            case "WEBSOCKET":
-                return createWebSocketConnection(config);
-            default:
-                throw new CollectorException(
-                        String.format("不支持的连接类型: %s", connectionType),
-                        config.getDeviceId(), null
-                );
-        }
+        return switch (connectionType) {
+            case "TCP" -> createTcpConnection(config);
+            case "HTTP" -> createHttpConnection(config);
+            case "MQTT" -> createMqttConnection(config);
+            case "WEBSOCKET" -> createWebSocketConnection(config);
+            default -> throw new CollectorException(
+                    String.format("不支持的连接类型: %s", connectionType),
+                    config.getDeviceId(), null
+            );
+        };
     }
 
     /**
