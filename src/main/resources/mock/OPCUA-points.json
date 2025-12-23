@@ -1,0 +1,69 @@
+[
+  {
+    "pointId": "opcua_temperature",
+    "pointName": "Demo Temperature",
+    "deviceId": "OPCUA_DEVICE_001",
+    "address": "ns=3;i=1006",
+    "dataType": "DOUBLE",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "opcUaType": "DOUBLE",
+      "deadband": 0.2
+    }
+  },
+  {
+    "pointId": "opcua_pressure",
+    "pointName": "Demo Pressure",
+    "deviceId": "OPCUA_DEVICE_001",
+    "address": "ns=3;i=1005",
+    "dataType": "FLOAT",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "opcUaType": "FLOAT"
+    }
+  },
+  {
+    "pointId": "opcua_motor_state",
+    "pointName": "Motor State",
+    "deviceId": "OPCUA_DEVICE_001",
+    "address": "ns=3;i=1004",
+    "dataType": "BOOLEAN",
+    "readWrite": "RW",
+    "collectionMode": "SUBSCRIPTION",
+    "additionalConfig": {
+      "opcUaType": "BOOLEAN",
+      "subscribe": true,
+      "samplingInterval": 500,
+      "queueSize": 5
+    }
+  },
+  {
+    "pointId": "opcua_setpoint",
+    "pointName": "Temperature Setpoint",
+    "deviceId": "OPCUA_DEVICE_001",
+    "address": "ns=3;i=1003",
+    "dataType": "DOUBLE",
+    "readWrite": "RW",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "opcUaType": "DOUBLE"
+    }
+  },
+  {
+    "pointId": "opcua_command",
+    "pointName": "Motor Command",
+    "deviceId": "OPCUA_DEVICE_001",
+    "address": "ns=3;i=1002",
+    "dataType": "BOOLEAN",
+    "readWrite": "RW",
+    "collectionMode": "SUBSCRIPTION",
+    "additionalConfig": {
+      "opcUaType": "BOOLEAN",
+      "subscribe": true,
+      "samplingInterval": 1000,
+      "queueSize": 3
+    }
+  }
+]

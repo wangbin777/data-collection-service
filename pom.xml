@@ -167,15 +167,33 @@
       <version>1.9.0</version>
     </dependency>
 
+    <!--coap 采集 -->
+    <dependency>
+      <groupId>org.eclipse.californium</groupId>
+      <artifactId>californium-core</artifactId>
+      <version>3.11.0</version>
+    </dependency>
+
+    <!-- Milo OPC UA 核心依赖 -->
     <dependency>
       <groupId>org.eclipse.milo</groupId>
-      <artifactId>sdk-client</artifactId>
-      <version>0.6.9</version>
+      <artifactId>milo-sdk-core</artifactId>
+      <version>1.0.8</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.milo</groupId>
+      <artifactId>milo-sdk-client</artifactId>
+      <version>1.0.8</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.milo</groupId>
+      <artifactId>milo-sdk-server</artifactId>
+      <version>1.0.8</version>
     </dependency>
     <dependency>
       <groupId>org.snmp4j</groupId>
       <artifactId>snmp4j</artifactId>
-      <version>3.7.7</version>
+      <version>3.9.6</version>
     </dependency>
     <!-- 如果需要异步客户端 -->
     <dependency>

@@ -28,6 +28,9 @@ public class DataUtils {
             case "RTU_104_001":
                 points = DataUtils.createRTU104001Points();
                 break;
+            case "OPCUA_DEVICE_001":
+                points = DataUtils.createOPCUADEVICE001Points();
+                break;
             default:
                 points = DataUtils.createPLC001DataPoints();
         }
@@ -35,7 +38,6 @@ public class DataUtils {
         log.info("为设备 {} 生成 {} 个模拟数据点", deviceId, points.size());
         return points;
     }
-
 
 
     /**
@@ -59,7 +61,9 @@ public class DataUtils {
         return JsonDataPointLoader.loadDataPointsFromJson("mock/IEC104-RTU104001-points.json");
     }
 
-
+    private static List<DataPoint> createOPCUADEVICE001Points() {
+        return JsonDataPointLoader.loadDataPointsFromJson("mock/OPCUA-points.json");
+    }
 
 
 

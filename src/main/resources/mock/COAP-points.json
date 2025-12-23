@@ -1,0 +1,52 @@
+[
+  {
+    "pointId": "temp",
+    "pointName": "温度",
+    "deviceId": "COAP_DEVICE_001",
+    "address": "/temperature",
+    "dataType": "FLOAT",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "method": "GET",
+      "mediaType": "application/json"
+    }
+  },
+  {
+    "pointId": "humidity",
+    "pointName": "湿度",
+    "deviceId": "COAP_DEVICE_001",
+    "address": "/humidity",
+    "dataType": "FLOAT",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "method": "GET"
+    }
+  },
+  {
+    "pointId": "led",
+    "pointName": "LED开关",
+    "deviceId": "COAP_DEVICE_001",
+    "address": "/led",
+    "dataType": "STRING",
+    "readWrite": "RW",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "method": "PUT",
+      "mediaType": "text/plain"
+    }
+  },
+  {
+    "pointId": "alarm",
+    "pointName": "告警观察",
+    "deviceId": "COAP_DEVICE_001",
+    "address": "/alarm",
+    "dataType": "STRING",
+    "readWrite": "R",
+    "collectionMode": "SUBSCRIPTION",
+    "additionalConfig": {
+      "observe": true
+    }
+  }
+]

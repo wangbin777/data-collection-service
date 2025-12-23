@@ -1,0 +1,62 @@
+[
+  {
+    "pointId": "sysDescr",
+    "pointName": "系统描述",
+    "deviceId": "SNMP_DEVICE_001",
+    "address": ".1.3.6.1.2.1.1.1.0",
+    "dataType": "STRING",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "snmpType": "STRING"
+    }
+  },
+  {
+    "pointId": "sysUpTime",
+    "pointName": "运行时长",
+    "deviceId": "SNMP_DEVICE_001",
+    "address": ".1.3.6.1.2.1.1.3.0",
+    "dataType": "TIMETICKS",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "snmpType": "TIMETICKS"
+    }
+  },
+  {
+    "pointId": "ifInOctets1",
+    "pointName": "接口1输入字节",
+    "deviceId": "SNMP_DEVICE_001",
+    "address": ".1.3.6.1.2.1.2.2.1.10.1",
+    "dataType": "COUNTER32",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "snmpType": "COUNTER32"
+    }
+  },
+  {
+    "pointId": "ifOutOctets1",
+    "pointName": "接口1输出字节",
+    "deviceId": "SNMP_DEVICE_001",
+    "address": ".1.3.6.1.2.1.2.2.1.16.1",
+    "dataType": "COUNTER32",
+    "readWrite": "R",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "snmpType": "COUNTER32"
+    }
+  },
+  {
+    "pointId": "sysContact",
+    "pointName": "维护联系人",
+    "deviceId": "SNMP_DEVICE_001",
+    "address": ".1.3.6.1.2.1.1.4.0",
+    "dataType": "STRING",
+    "readWrite": "RW",
+    "collectionMode": "POLLING",
+    "additionalConfig": {
+      "snmpType": "STRING"
+    }
+  }
+]

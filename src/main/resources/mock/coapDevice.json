@@ -1,0 +1,14 @@
+{
+  "deviceId": "COAP_DEVICE_001",
+  "deviceName": "CoAP演示设备",
+  "protocolType": "COAP",
+  "ipAddress": "127.0.0.1",
+  "port": 5683,
+  "protocolConfig": {
+    "scheme": "coap",
+    "basePath": "/sensor",
+    "timeout": 5000
+  },
+  "collectionInterval": 5000,
+  "remark": "Californium演示资源"
+}

@@ -1,12 +1,12 @@
-[{
+{
   "deviceId": "OPCUA_DEVICE_001",
   "deviceName": "OPC UA Demo Server",
   "protocolType": "OPC_UA",
   "connectionType": "TCP",
   "ipAddress": "127.0.0.1",
-  "port": 53530,
+  "port": 4840,
   "protocolConfig": {
-    "endpointUrl": "opc.tcp://DESKTOP-IKHU04D:53530/OPCUA/SimulationServer",
+    "endpointUrl": "opc.tcp://127.0.0.1:4840",
     "securityPolicy": "None",
     "requestTimeout": 5000,
     "subscriptionInterval": 1000,
@@ -16,4 +16,3 @@
   "collectionInterval": 2000,
   "remark": "Mock device for OpcUaCollector"
 }
-]

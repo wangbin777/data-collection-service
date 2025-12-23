@@ -37,7 +37,7 @@
   "remark": "主控PLC设备，负责生产线控制"
 },
   {
-    "id": 2,
+    "id": 3,
     "deviceId": "PLC002",
     "deviceName": "西门子S7-1200 PLC",
     "deviceAlias": "主控PLC",
@@ -99,5 +99,47 @@
     "createTime": "2024-01-01T00:00:00Z",
     "updateTime": "2024-01-15T08:30:00Z",
     "remark": "主控PLC设备，通过RS485 Modbus RTU协议通信"
-  }
+  },{
+  "id": 2,
+  "deviceId": "RTU_104_001",
+  "deviceName": "IEC 104规约终端单元",
+  "deviceAlias": "104规约站",
+  "productKey": "IEC_60870_5_104",
+  "productName": "IEC 60870-5-104 RTU",
+  "groupId": "rtu_group",
+  "groupName": "RTU设备组",
+  "protocolType": "IEC104",
+  "connectionType": "TCP",
+  "ipAddress": "127.0.0.1",
+  "port": 2404,
+  "protocolConfig": {
+    "commonAddress": 1,
+    "timeout": 5000,
+    "retries": 3,
+    "cotSize": 2,
+    "caSize": 2,
+    "ioaSize": 3,
+    "t0": 30,
+    "t1": 15,
+    "t2": 10,
+    "t3": 20,
+    "k": 12,
+    "w": 8
+  },
+  "connectionConfig": {
+    "keepAlive": true,
+    "reconnectInterval": 10000,
+    "connectTimeout": 5000,
+    "socketTimeout": 10000
+  },
+  "collectionInterval": 2,
+  "reportInterval": 10,
+  "status": "ONLINE",
+  "lastOnlineTime": "2024-01-15T08:30:00Z",
+  "maxRetryCount": 5,
+  "retryCount": 0,
+  "createTime": "2024-01-01T00:00:00Z",
+  "updateTime": "2024-01-15T08:30:00Z",
+  "remark": "IEC 104规约终端，支持单点、双点、测量值等标准信息对象"
+}
 ]

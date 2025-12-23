@@ -1,0 +1,17 @@
+{
+  "deviceId": "SNMP_DEVICE_001",
+  "deviceName": "SNMP演示设备",
+  "protocolType": "SNMP",
+  "ipAddress": "127.0.0.1",
+  "port": 161,
+  "connectionType": "TCP",
+  "groupId": "SNMP_GROUP",
+  "protocolConfig": {
+    "community": "public",
+    "version": "2c",
+    "timeout": 5000,
+    "retries": 2
+  },
+  "collectionInterval": 5000,
+  "remark": "本地SNMP测试设备"
+}
