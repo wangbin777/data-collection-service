@@ -37,12 +37,12 @@ public class SnmpCollector extends AbstractSnmpCollector {
     @Override
     protected void doConnect() throws Exception {
         initSnmpConfig(deviceInfo);
-        openSnmpSession();
+        initSnmpConnection();
     }
 
     @Override
     protected void doDisconnect() {
-        closeSnmpSession();
+        closeSnmpConnection();
     }
 
     @Override
@@ -128,7 +128,7 @@ public class SnmpCollector extends AbstractSnmpCollector {
         status.put("port", port);
         status.put("community", community);
         status.put("version", version);
-        status.put("connected", snmp != null);
+        status.put("connected", snmpConnection != null && snmpConnection.isConnected());
         status.put("subscribedPoints", subscribedPoints.size());
         status.put("timeout", timeout);
         status.put("retries", retries);

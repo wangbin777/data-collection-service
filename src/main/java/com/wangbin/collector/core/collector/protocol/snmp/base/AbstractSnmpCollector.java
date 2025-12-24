@@ -6,8 +6,13 @@ import com.wangbin.collector.core.collector.protocol.snmp.domain.SnmpAddress;
 import com.wangbin.collector.core.collector.protocol.snmp.domain.SnmpDataType;
 import com.wangbin.collector.core.collector.protocol.snmp.util.SnmpUtils;
 import com.wangbin.collector.core.config.CollectorProperties;
+import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
+import com.wangbin.collector.core.connection.adapter.SnmpConnectionAdapter;
+import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
-import org.snmp4j.*;
+import org.snmp4j.PDU;
+import org.snmp4j.Snmp;
+import org.snmp4j.Target;
 import org.snmp4j.event.ResponseEvent;
 import org.snmp4j.mp.SnmpConstants;
 import org.snmp4j.smi.OID;
@@ -15,10 +20,14 @@ import org.snmp4j.smi.OctetString;
 import org.snmp4j.smi.UdpAddress;
 import org.snmp4j.smi.Variable;
 import org.snmp4j.smi.VariableBinding;
-import org.snmp4j.transport.DefaultUdpTransportMapping;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * SNMP 公共能力抽象。
@@ -26,9 +35,8 @@ import java.util.*;
 @Slf4j
 public abstract class AbstractSnmpCollector extends BaseCollector {
 
-    protected Snmp snmp;
-    protected Target<UdpAddress> target;
-    protected TransportMapping<UdpAddress> transport;
+    protected SnmpConnectionAdapter snmpConnection;
+    protected ConnectionConfig managedConnectionConfig;
 
     protected CollectorProperties.SnmpConfig snmpConfig;
 
@@ -38,6 +46,7 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
     protected int timeout = 5000;
     protected int retries = 1;
     protected int version = SnmpConstants.version2c;
+    protected String versionText = "2c";
 
     protected void initSnmpConfig(DeviceInfo deviceInfo) {
         this.snmpConfig = collectorProperties != null
@@ -64,7 +73,7 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
         retries = parseInt(config.get("retries"),
                 snmpConfig != null ? snmpConfig.getRetries() : retries);
 
-        String versionText = Objects.toString(
+        versionText = Objects.toString(
                 config.getOrDefault("version",
                         snmpConfig != null ? snmpConfig.getVersion() : "2c"),
                 "2c").trim();
@@ -84,103 +93,146 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
         }
     }
 
-    protected void openSnmpSession() throws IOException {
-        transport = new DefaultUdpTransportMapping();
-        transport.listen();
-        snmp = new Snmp(transport);
-        target = buildCommunityTarget();
-        log.info("SNMP会话建立完成 host={} port={} version={} timeout={} retries={}",
-                host, port, version, timeout, retries);
+    protected void initSnmpConnection() throws Exception {
+        this.managedConnectionConfig = buildConnectionConfig();
+        ConnectionAdapter adapter = connectionManager.createConnection(managedConnectionConfig);
+        connectionManager.connect(deviceInfo.getDeviceId());
+        if (!(adapter instanceof SnmpConnectionAdapter snmpAdapter)) {
+            throw new IllegalStateException("SNMP连接适配器类型不匹配");
+        }
+        this.snmpConnection = snmpAdapter;
     }
 
-    protected void closeSnmpSession() {
-        if (snmp != null) {
-            try {
-                snmp.close();
-            } catch (Exception e) {
-                log.warn("关闭SNMP实例异常", e);
-            } finally {
-                snmp = null;
-            }
+    protected void closeSnmpConnection() {
+        if (connectionManager != null && deviceInfo != null) {
+            connectionManager.removeConnection(deviceInfo.getDeviceId());
         }
-        if (transport != null) {
-            try {
-                transport.close();
-            } catch (Exception e) {
-                log.warn("关闭SNMP传输异常", e);
-            } finally {
-                transport = null;
-            }
-        }
-        target = null;
+        snmpConnection = null;
+        managedConnectionConfig = null;
     }
 
-    private CommunityTarget<UdpAddress> buildCommunityTarget() {
-        CommunityTarget<UdpAddress> communityTarget = new CommunityTarget<>();
-        communityTarget.setCommunity(new OctetString(community));
-        communityTarget.setVersion(version);
-        communityTarget.setRetries(retries);
-        communityTarget.setTimeout(timeout);
-        communityTarget.setAddress(new UdpAddress(host + "/" + port));
-        return communityTarget;
+    protected ConnectionConfig buildConnectionConfig() {
+        ConnectionConfig config = new ConnectionConfig();
+        config.setDeviceId(deviceInfo.getDeviceId());
+        config.setDeviceName(deviceInfo.getDeviceName());
+        config.setProtocolType(getProtocolType());
+        config.setConnectionType("SNMP");
+        config.setHost(host);
+        config.setPort(port);
+        config.setReadTimeout(timeout);
+        config.setWriteTimeout(timeout);
+        Map<String, Object> connectionExtras = deviceInfo.getConnectionConfig();
+        config.setConnectTimeout(parseInt(
+                connectionExtras != null ? connectionExtras.get("connectTimeout") : null,
+                5000));
+        config.setGroupId(deviceInfo.getGroupId());
+        config.setMaxPendingMessages(parseInt(
+                connectionExtras != null
+                        ? connectionExtras.get("maxPendingMessages")
+                        : null, 1024));
+        config.setDispatchBatchSize(parseInt(
+                connectionExtras != null
+                        ? connectionExtras.get("dispatchBatchSize")
+                        : null, 1));
+        config.setDispatchFlushInterval(parseLong(
+                connectionExtras != null ? connectionExtras.get("dispatchFlushInterval") : null, 0L));
+        String overflow = connectionExtras != null
+                ? Objects.toString(connectionExtras.get("overflowStrategy"), "BLOCK")
+                : "BLOCK";
+        config.setOverflowStrategy(overflow);
+
+        Map<String, Object> protocol = new HashMap<>();
+        protocol.put("community", community);
+        protocol.put("snmpVersion", versionText);
+        protocol.put("snmpRetries", retries);
+        config.setProtocolConfig(protocol);
+        if (connectionExtras != null) {
+            config.setExtraParams(new HashMap<>(connectionExtras));
+        }
+        return config;
     }
 
     protected Map<String, Variable> performGet(List<SnmpAddress> addresses) throws IOException {
-        Map<String, Variable> values = new LinkedHashMap<>();
-        for (List<SnmpAddress> chunk : SnmpUtils.partition(addresses, 10)) {
-            PDU pdu = createPdu(PDU.GET, chunk);
-            ResponseEvent<UdpAddress> event = snmp.send(pdu, target);
-            PDU response = validateResponse(event);
-            for (int i = 0; i < response.size(); i++) {
-                VariableBinding binding = response.get(i);
-                values.put(binding.getOid().toDottedString(), binding.getVariable());
-            }
+        try {
+            return executeSnmp((snmp, target) -> {
+                Map<String, Variable> values = new LinkedHashMap<>();
+                for (List<SnmpAddress> chunk : SnmpUtils.partition(addresses, 10)) {
+                    PDU pdu = createPdu(PDU.GET, chunk);
+                    ResponseEvent<UdpAddress> event = snmp.send(pdu, target);
+                    PDU response = validateResponse(event);
+                    for (int i = 0; i < response.size(); i++) {
+                        VariableBinding binding = response.get(i);
+                        values.put(binding.getOid().toDottedString(), binding.getVariable());
+                    }
+                }
+                return values;
+            });
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("SNMP GET 执行失败", e);
         }
-        return values;
     }
 
     protected void performSet(Map<SnmpAddress, Object> values) throws IOException {
         if (values.isEmpty()) {
             return;
         }
-        List<VariableBinding> bindings = new ArrayList<>();
-        for (Map.Entry<SnmpAddress, Object> entry : values.entrySet()) {
-            SnmpAddress address = entry.getKey();
-            Variable variable = SnmpUtils.toVariable(entry.getValue(), address.getDataType());
-            bindings.add(new VariableBinding(new OID(address.getOid()), variable));
-        }
-        for (List<VariableBinding> chunk : SnmpUtils.partitionBindings(bindings, 10)) {
-            PDU pdu = new PDU();
-            chunk.forEach(pdu::add);
-            pdu.setType(PDU.SET);
-            ResponseEvent<UdpAddress> event = snmp.send(pdu, target);
-            validateResponse(event);
+        try {
+            executeSnmp((snmp, target) -> {
+                List<VariableBinding> bindings = new java.util.ArrayList<>();
+                for (Map.Entry<SnmpAddress, Object> entry : values.entrySet()) {
+                    SnmpAddress address = entry.getKey();
+                    Variable variable = SnmpUtils.toVariable(entry.getValue(), address.getDataType());
+                    bindings.add(new VariableBinding(new OID(address.getOid()), variable));
+                }
+                for (List<VariableBinding> chunk : SnmpUtils.partitionBindings(bindings, 10)) {
+                    PDU pdu = new PDU();
+                    chunk.forEach(pdu::add);
+                    pdu.setType(PDU.SET);
+                    ResponseEvent<UdpAddress> event = snmp.send(pdu, target);
+                    validateResponse(event);
+                }
+                return null;
+            });
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("SNMP SET 执行失败", e);
         }
     }
 
     protected List<VariableBinding> performWalk(String rootOid, int maxNodes) throws IOException {
-        List<VariableBinding> nodes = new ArrayList<>();
-        OID currentRoot = new OID(rootOid);
-        OID current = currentRoot;
-        int count = 0;
-        while (count < maxNodes) {
-            PDU pdu = new PDU();
-            pdu.add(new VariableBinding(current));
-            pdu.setType(PDU.GETNEXT);
-            ResponseEvent<UdpAddress> event = snmp.send(pdu, target);
-            PDU response = validateResponse(event);
-            if (response.size() == 0) {
-                break;
-            }
-            VariableBinding vb = response.get(0);
-            if (!vb.getOid().startsWith(currentRoot)) {
-                break;
-            }
-            nodes.add(vb);
-            current = vb.getOid();
-            count++;
+        try {
+            return executeSnmp((snmp, target) -> {
+                List<VariableBinding> nodes = new java.util.ArrayList<>();
+                OID currentRoot = new OID(rootOid);
+                OID current = currentRoot;
+                int count = 0;
+                while (count < maxNodes) {
+                    PDU pdu = new PDU();
+                    pdu.add(new VariableBinding(current));
+                    pdu.setType(PDU.GETNEXT);
+                    ResponseEvent<UdpAddress> event = snmp.send(pdu, target);
+                    PDU response = validateResponse(event);
+                    if (response.size() == 0) {
+                        break;
+                    }
+                    VariableBinding vb = response.get(0);
+                    if (!vb.getOid().startsWith(currentRoot)) {
+                        break;
+                    }
+                    nodes.add(vb);
+                    current = vb.getOid();
+                    count++;
+                }
+                return nodes;
+            });
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("SNMP WALK 执行失败", e);
         }
-        return nodes;
     }
 
     protected PDU createPdu(int type, List<SnmpAddress> addresses) {
@@ -211,6 +263,21 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
         return SnmpUtils.toVariable(value, dataType);
     }
 
+    protected <T> T executeSnmp(SnmpConnectionAdapter.SnmpCallable<T> callable) throws Exception {
+        if (snmpConnection == null) {
+            throw new IllegalStateException("SNMP连接尚未建立");
+        }
+        return snmpConnection.execute(callable, timeout);
+    }
+
+    protected Snmp getSnmpClient() {
+        return snmpConnection != null ? snmpConnection.getSnmp() : null;
+    }
+
+    protected Target<UdpAddress> getSnmpTarget() {
+        return snmpConnection != null ? snmpConnection.getTarget() : null;
+    }
+
     private int parseInt(Object raw, int defaultValue) {
         if (raw == null) {
             return defaultValue;
@@ -220,6 +287,20 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
         }
         try {
             return Integer.parseInt(raw.toString());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private long parseLong(Object raw, long defaultValue) {
+        if (raw == null) {
+            return defaultValue;
+        }
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(raw.toString());
         } catch (NumberFormatException e) {
             return defaultValue;
         }

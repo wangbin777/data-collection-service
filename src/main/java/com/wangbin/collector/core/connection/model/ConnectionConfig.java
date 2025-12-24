@@ -77,7 +77,11 @@ public class ConnectionConfig {
             return false;
         }
 
-        if ("TCP".equalsIgnoreCase(connectionType) || "HTTP".equalsIgnoreCase(connectionType)) {
+        if ("TCP".equalsIgnoreCase(connectionType)
+                || "HTTP".equalsIgnoreCase(connectionType)
+                || "MODBUS_TCP".equalsIgnoreCase(connectionType)
+                || "COAP".equalsIgnoreCase(connectionType)
+                || "SNMP".equalsIgnoreCase(connectionType)) {
             return host != null && !host.isEmpty() && port != null && port > 0;
         }
 
@@ -87,6 +91,11 @@ public class ConnectionConfig {
 
         if ("WEBSOCKET".equalsIgnoreCase(connectionType)) {
             return url != null && !url.isEmpty();
+        }
+
+        if ("MODBUS_RTU".equalsIgnoreCase(connectionType)) {
+            // RTU 连接至少需要串口名
+            return host != null && !host.isEmpty();
         }
 
         return true;

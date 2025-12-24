@@ -8,17 +8,13 @@ import org.eclipse.californium.core.CoapClient;
 import org.eclipse.californium.core.CoapResponse;
 import org.eclipse.californium.core.WebLink;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
-import org.eclipse.californium.elements.exception.ConnectorException;
-
 import org.eclipse.californium.core.CoapObserveRelation;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * CoAP 采集器实现。
- * 如需将观察/Trap 推送给上层缓存或作进一步处理，可在 handleNotification() 或 SNMP 轮询回调内接入业务管道
- */
+ * CoAP 閲囬泦鍣ㄥ疄鐜般€? * 濡傞渶灏嗚瀵?Trap 鎺ㄩ€佺粰涓婂眰缂撳瓨鎴栦綔杩涗竴姝ュ鐞嗭紝鍙湪 handleNotification() 鎴?SNMP 杞鍥炶皟鍐呮帴鍏ヤ笟鍔＄閬? */
 @Slf4j
 public class CoapCollector extends AbstractCoapCollector {
 
@@ -36,13 +32,12 @@ public class CoapCollector extends AbstractCoapCollector {
 
     @Override
     protected void doConnect() throws Exception {
-        initCoapConfig(deviceInfo);
-        openClient();
+        initCoapConnection();
     }
 
     @Override
     protected void doDisconnect() {
-        closeClient();
+        closeCoapConnection();
         observeMapping.clear();
     }
 
@@ -60,7 +55,7 @@ public class CoapCollector extends AbstractCoapCollector {
             try {
                 values.put(point.getPointId(), doReadPoint(point));
             } catch (Exception e) {
-                log.error("CoAP批量读取失败 point={}", point.getPointName(), e);
+                log.error("CoAP鎵归噺璇诲彇澶辫触 point={}", point.getPointName(), e);
                 values.put(point.getPointId(), null);
             }
         }
@@ -83,7 +78,7 @@ public class CoapCollector extends AbstractCoapCollector {
                 boolean success = doWritePoint(entry.getKey(), entry.getValue());
                 results.put(entry.getKey().getPointId(), success);
             } catch (Exception e) {
-                log.error("CoAP写入失败 point={}", entry.getKey().getPointName(), e);
+                log.error("CoAP鍐欏叆澶辫触 point={}", entry.getKey().getPointName(), e);
                 results.put(entry.getKey().getPointId(), false);
             }
         }
@@ -100,7 +95,7 @@ public class CoapCollector extends AbstractCoapCollector {
             observeMapping.put(coapPoint.getObserveKey(), point);
             startObserve(coapPoint, createHandler(coapPoint));
         }
-        log.info("CoAP观察订阅完成 size={}", observeMapping.size());
+        log.info("CoAP瑙傚療璁㈤槄瀹屾垚 size={}", observeMapping.size());
     }
 
     @Override
@@ -110,7 +105,7 @@ public class CoapCollector extends AbstractCoapCollector {
                 try {
                     relation.proactiveCancel();
                 } catch (Exception e) {
-                    log.debug("取消观察异常", e);
+                    log.debug("鍙栨秷瑙傚療寮傚父", e);
                 }
             });
             observeRelations.clear();
@@ -128,10 +123,11 @@ public class CoapCollector extends AbstractCoapCollector {
     protected Map<String, Object> doGetDeviceStatus() {
         Map<String, Object> status = new HashMap<>();
         status.put("baseUri", baseUri);
-        status.put("connected", baseClient != null);
+        status.put("connected", coapConnection != null && coapConnection.isConnected());
         status.put("timeout", timeout);
         status.put("observeRelations", observeRelations.size());
         status.put("subscribedPoints", observeMapping.size());
+        status.put("connectionStats", coapConnection != null ? coapConnection.getStatistics() : Map.of());
         return status;
     }
 
@@ -149,13 +145,13 @@ public class CoapCollector extends AbstractCoapCollector {
             case "discover":
                 return doCommandDiscover();
             default:
-                throw new IllegalArgumentException("不支持的CoAP命令: " + command);
+                throw new IllegalArgumentException("涓嶆敮鎸佺殑CoAP鍛戒护: " + command);
         }
     }
 
     @Override
     protected void buildReadPlans(String deviceId, List<DataPoint> points) {
-        log.info("CoAP点位加载完成 device={} count={}", deviceId, points.size());
+        log.info("CoAP鐐逛綅鍔犺浇瀹屾垚 device={} count={}", deviceId, points.size());
     }
 
     @Override
@@ -165,7 +161,7 @@ public class CoapCollector extends AbstractCoapCollector {
             return;
         }
         Object value = convertResponse(response, point);
-        log.info("CoAP推送 pointId={} value={}", dataPoint.getPointId(), value);
+        log.info("CoAP鎺ㄩ€?pointId={} value={}", dataPoint.getPointId(), value);
     }
 
     private byte[] buildPayload(Object value, boolean binary) {
@@ -180,9 +176,14 @@ public class CoapCollector extends AbstractCoapCollector {
 
     private Object doCommandGet(Map<String, Object> params) throws Exception {
         String uri = Objects.toString(params.get("uri"), baseUri);
-        CoapClient client = new CoapClient(uri);
-        CoapResponse response = client.get();
-        client.shutdown();
+        CoapResponse response = coapConnection.execute(adapter -> {
+            CoapClient client = adapter.createClient(uri);
+            try {
+                return client.get();
+            } finally {
+                client.shutdown();
+            }
+        }, (long) timeout);
         if (response == null) {
             return Map.of("status", "timeout");
         }
@@ -201,9 +202,17 @@ public class CoapCollector extends AbstractCoapCollector {
         if (mediaType < 0) {
             mediaType = MediaTypeRegistry.TEXT_PLAIN;
         }
-        CoapClient client = new CoapClient(uri);
-        CoapResponse response = post ? client.post(payload, mediaType) : client.put(payload, mediaType);
-        client.shutdown();
+        final String requestUri = uri;
+        final String body = payload;
+        final int resolvedMediaType = mediaType;
+        CoapResponse response = coapConnection.execute(adapter -> {
+            CoapClient client = adapter.createClient(requestUri);
+            try {
+                return post ? client.post(body, resolvedMediaType) : client.put(body, resolvedMediaType);
+            } finally {
+                client.shutdown();
+            }
+        }, (long) timeout);
         if (response == null) {
             return Map.of("status", "timeout");
         }
@@ -212,17 +221,30 @@ public class CoapCollector extends AbstractCoapCollector {
 
     private Object doCommandDelete(Map<String, Object> params) throws Exception {
         String uri = Objects.toString(params.get("uri"), baseUri);
-        CoapClient client = new CoapClient(uri);
-        CoapResponse response = client.delete();
-        client.shutdown();
+        CoapResponse response = coapConnection.execute(adapter -> {
+            CoapClient client = adapter.createClient(uri);
+            try {
+                return client.delete();
+            } finally {
+                client.shutdown();
+            }
+        }, (long) timeout);
         if (response == null) {
             return Map.of("status", "timeout");
         }
         return Map.of("status", response.isSuccess() ? "success" : "error", "code", response.getCode());
     }
 
-    private Object doCommandDiscover() throws ConnectorException, java.io.IOException {
-        Set<WebLink> resources = baseClient.discover();
+    private Object doCommandDiscover() throws Exception {
+        Set<WebLink> resources = coapConnection != null
+                ? coapConnection.execute(adapter -> {
+                    CoapClient client = adapter.getBaseClient();
+                    if (client == null) {
+                        throw new IllegalStateException("CoAP base client unavailable");
+                    }
+                    return client.discover();
+                }, (long) timeout)
+                : null;
         List<Map<String, Object>> list = new ArrayList<>();
         if (resources != null) {
             for (WebLink link : resources) {

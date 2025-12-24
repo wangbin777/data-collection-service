@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 public class ConnectionFactory {
 
     /**
-     * 创建连接适配器
+     * 创建连接适配�?
      */
     public ConnectionAdapter createConnection(ConnectionConfig config) {
         if (config == null || !config.isValid()) {
@@ -28,6 +28,10 @@ public class ConnectionFactory {
             case "HTTP" -> createHttpConnection(config);
             case "MQTT" -> createMqttConnection(config);
             case "WEBSOCKET" -> createWebSocketConnection(config);
+            case "COAP" -> createCoapConnection(config);
+            case "MODBUS_TCP" -> createModbusTcpConnection(config);
+            case "MODBUS_RTU" -> createModbusRtuConnection(config);
+            case "SNMP" -> createSnmpConnection(config);
             default -> throw new CollectorException(
                     String.format("不支持的连接类型: %s", connectionType),
                     config.getDeviceId(), null
@@ -83,6 +87,42 @@ public class ConnectionFactory {
         }
     }
 
+    private ConnectionAdapter createCoapConnection(ConnectionConfig config) {
+        try {
+            return new CoapConnectionAdapter(config);
+        } catch (Exception e) {
+            log.error("创建CoAP连接失败: {}", config.getDeviceId(), e);
+            throw new CollectorException("创建CoAP连接失败", config.getDeviceId(), null);
+        }
+    }
+
+    private ConnectionAdapter createModbusTcpConnection(ConnectionConfig config) {
+        try {
+            return new ModbusTcpConnectionAdapter(config);
+        } catch (Exception e) {
+            log.error("创建Modbus TCP连接失败: {}", config.getDeviceId(), e);
+            throw new CollectorException("创建Modbus TCP连接失败", config.getDeviceId(), null);
+        }
+    }
+
+    private ConnectionAdapter createModbusRtuConnection(ConnectionConfig config) {
+        try {
+            return new ModbusRtuConnectionAdapter(config);
+        } catch (Exception e) {
+            log.error("创建Modbus RTU连接失败: {}", config.getDeviceId(), e);
+            throw new CollectorException("创建Modbus RTU连接失败", config.getDeviceId(), null);
+        }
+    }
+
+    private ConnectionAdapter createSnmpConnection(ConnectionConfig config) {
+        try {
+            return new SnmpConnectionAdapter(config);
+        } catch (Exception e) {
+            log.error("创建SNMP连接失败: {}", config.getDeviceId(), e);
+            throw new CollectorException("创建SNMP连接失败", config.getDeviceId(), null);
+        }
+    }
+
     /**
      * 根据协议类型创建连接
      */
@@ -92,6 +132,12 @@ public class ConnectionFactory {
         // 根据协议类型确定连接类型
         switch (protocolType) {
             case "MODBUS_TCP":
+                config.setConnectionType("MODBUS_TCP");
+                break;
+            case "MODBUS_RTU":
+            case "MODBUS_SERIAL":
+                config.setConnectionType("MODBUS_RTU");
+                break;
             case "IEC104":
             case "CUSTOM_TCP":
                 config.setConnectionType("TCP");
@@ -108,6 +154,16 @@ public class ConnectionFactory {
             case "WEBSOCKET_SSL":
                 config.setConnectionType("WEBSOCKET");
                 break;
+            case "COAP":
+            case "COAPS":
+                config.setConnectionType("COAP");
+                break;
+            case "SNMP":
+            case "SNMP_V1":
+            case "SNMP_V2":
+            case "SNMP_V3":
+                config.setConnectionType("SNMP");
+                break;
             default:
                 throw new CollectorException(
                         String.format("不支持的协议类型: %s", protocolType),
@@ -118,3 +174,4 @@ public class ConnectionFactory {
         return createConnection(config);
     }
 }
+
