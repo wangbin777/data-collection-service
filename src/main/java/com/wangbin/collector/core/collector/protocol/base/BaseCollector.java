@@ -6,6 +6,7 @@ import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.DataQuality;
 import com.wangbin.collector.common.exception.CollectorException;
 import com.wangbin.collector.core.config.CollectorProperties;
+import com.wangbin.collector.core.connection.manager.ConnectionManager;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +52,9 @@ public abstract class BaseCollector implements ProtocolCollector {
 
     @Autowired
     protected CollectorProperties collectorProperties;
+
+    @Autowired
+    protected ConnectionManager connectionManager;
 
     @Override
     public void init(DeviceInfo deviceInfo) throws CollectorException {

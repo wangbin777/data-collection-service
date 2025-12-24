@@ -85,6 +85,11 @@ public class CollectorProperties {
         private boolean cleanSession = true;
         private int connectionTimeout = 30;
         private int keepAliveInterval = 60;
+        private int maxPendingMessages = 5000;
+        private int dispatchBatchSize = 1;
+        private long dispatchFlushInterval = 0;
+        private String overflowStrategy = "BLOCK";
+        private int maxGroupConnections = 0;
     }
 
     @Data

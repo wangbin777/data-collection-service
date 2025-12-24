@@ -5,17 +5,24 @@ import com.alibaba.fastjson2.JSONPath;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.config.CollectorProperties;
+import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
+import com.wangbin.collector.core.connection.adapter.MqttConnectionAdapter;
+import com.wangbin.collector.core.connection.adapter.MqttReceivedMessage;
+import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import static com.wangbin.collector.core.collector.protocol.mqtt.MqttCollectorUtils.asBoolean;
 import static com.wangbin.collector.core.collector.protocol.mqtt.MqttCollectorUtils.asInt;
@@ -25,7 +32,9 @@ public class MqttCollector extends BaseCollector {
 
     private CollectorProperties.MqttConfig defaultConfig;
     private MqttConnectionConfig connectionConfig;
-    private MqttClientAdapter clientAdapter;
+    private ConnectionConfig managedConnectionConfig;
+    private MqttConnectionAdapter mqttConnection;
+    private final Consumer<MqttReceivedMessage> inboundListener = this::handleInboundMessage;
 
     private final Map<String, DataPoint> pointDefinitions = new ConcurrentHashMap<>();
     private final Map<String, MqttPointOptions> pointOptions = new ConcurrentHashMap<>();
@@ -48,10 +57,17 @@ public class MqttCollector extends BaseCollector {
     @Override
     protected void doConnect() throws Exception {
         initConfig();
-        this.clientAdapter = connectionConfig.getVersion() == MqttProtocolVersion.V5
-                ? new PahoV5ClientAdapter(connectionConfig, this::handleIncomingMessage)
-                : new PahoV3ClientAdapter(connectionConfig, this::handleIncomingMessage);
-        clientAdapter.connect();
+        if (connectionManager == null) {
+            throw new IllegalStateException("连接管理器未初始化");
+        }
+        this.managedConnectionConfig = buildConnectionConfig();
+        ConnectionAdapter adapter = connectionManager.createConnection(managedConnectionConfig);
+        connectionManager.connect(deviceInfo.getDeviceId());
+        if (!(adapter instanceof MqttConnectionAdapter mqttAdapter)) {
+            throw new IllegalStateException("MQTT连接适配器类型不匹配");
+        }
+        this.mqttConnection = mqttAdapter;
+        this.mqttConnection.addMessageListener(inboundListener);
         for (MqttTopicSubscription subscription : connectionConfig.getDefaultTopics()) {
             ensureTopicSubscription(subscription.getTopic(), subscription.getQos());
             baseSubscribedTopics.add(subscription.getTopic());
@@ -60,13 +76,14 @@ public class MqttCollector extends BaseCollector {
 
     @Override
     protected void doDisconnect() throws Exception {
-        if (clientAdapter != null) {
-            try {
-                clientAdapter.disconnect();
-            } finally {
-                clientAdapter = null;
-            }
+        if (mqttConnection != null) {
+            mqttConnection.removeMessageListener(inboundListener);
         }
+        if (connectionManager != null && deviceInfo != null) {
+            connectionManager.removeConnection(deviceInfo.getDeviceId());
+        }
+        mqttConnection = null;
+        managedConnectionConfig = null;
         topicBindings.clear();
         topicRefCount.clear();
         baseSubscribedTopics.clear();
@@ -128,7 +145,9 @@ public class MqttCollector extends BaseCollector {
         if (points == null || points.isEmpty()) {
             for (String topic : List.copyOf(topicBindings.keySet())) {
                 if (!baseSubscribedTopics.contains(topic)) {
-                    clientAdapter.unsubscribe(topic);
+                    if (mqttConnection != null) {
+                        mqttConnection.unsubscribe(topic);
+                    }
                     topicRefCount.remove(topic);
                 }
             }
@@ -156,10 +175,11 @@ public class MqttCollector extends BaseCollector {
         status.put("brokerUrl", connectionConfig != null ? connectionConfig.getBrokerUrl() : "N/A");
         status.put("clientId", connectionConfig != null ? connectionConfig.getClientId() : "N/A");
         status.put("protocolVersion", connectionConfig != null ? connectionConfig.getVersion().name() : "UNKNOWN");
-        status.put("connected", clientAdapter != null && clientAdapter.isConnected());
+        status.put("connected", mqttConnection != null && mqttConnection.isConnected());
         status.put("subscriptions", topicBindings.keySet());
         status.put("cachedPoints", latestValues.size());
         status.put("lastTimestamps", latestTimestamps);
+        status.put("connectionStats", mqttConnection != null ? mqttConnection.getStatistics() : Collections.emptyMap());
         return status;
     }
 
@@ -197,6 +217,87 @@ public class MqttCollector extends BaseCollector {
         this.connectionConfig = MqttConnectionConfig.from(deviceInfo, defaultConfig);
     }
 
+    private ConnectionConfig buildConnectionConfig() {
+        ConnectionConfig cfg = new ConnectionConfig();
+        cfg.setDeviceId(deviceInfo.getDeviceId());
+        cfg.setDeviceName(deviceInfo.getDeviceName());
+        cfg.setProtocolType(deviceInfo.getProtocolType());
+        cfg.setConnectionType("MQTT");
+        cfg.setProductKey(deviceInfo.getProductKey());
+        Object deviceSecret = deviceInfo.getAuthParam("deviceSecret");
+        if (deviceSecret != null) {
+            cfg.setDeviceSecret(deviceSecret.toString());
+        }
+        cfg.setUrl(connectionConfig.getBrokerUrl());
+        cfg.setClientId(connectionConfig.getClientId());
+        cfg.setUsername(connectionConfig.getUsername());
+        cfg.setPassword(connectionConfig.getPassword());
+        cfg.setConnectTimeout(connectionConfig.getConnectionTimeoutSeconds() * 1000);
+        int ioTimeout = Math.max(1, connectionConfig.getKeepAliveIntervalSeconds()) * 1000;
+        cfg.setReadTimeout(ioTimeout);
+        cfg.setWriteTimeout(ioTimeout);
+        cfg.setHeartbeatInterval(connectionConfig.getKeepAliveIntervalSeconds() * 1000);
+        cfg.setAutoReconnect(connectionConfig.isAutomaticReconnect());
+        cfg.setGroupId(connectionConfig.getGroupId() != null && !connectionConfig.getGroupId().isBlank()
+                ? connectionConfig.getGroupId()
+                : deviceInfo.getGroupId());
+        cfg.setMaxGroupConnections(Math.max(0, connectionConfig.getMaxGroupConnections()));
+        cfg.setMaxPendingMessages(Math.max(1, connectionConfig.getMaxPendingMessages()));
+        cfg.setDispatchBatchSize(Math.max(1, connectionConfig.getDispatchBatchSize()));
+        cfg.setDispatchFlushInterval(Math.max(0L, connectionConfig.getDispatchFlushIntervalMillis()));
+        cfg.setOverflowStrategy(connectionConfig.getOverflowStrategy());
+        cfg.setProtocolConfig(buildProtocolOverrides());
+        if (deviceInfo.getConnectionConfig() != null) {
+            cfg.setExtraParams(new HashMap<>(deviceInfo.getConnectionConfig()));
+        }
+        try {
+            URI uri = new URI(connectionConfig.getBrokerUrl());
+            if (uri.getHost() != null) {
+                cfg.setHost(uri.getHost());
+            }
+            if (uri.getPort() > 0) {
+                cfg.setPort(uri.getPort());
+            } else if (cfg.getHost() != null) {
+                cfg.setPort(isSslScheme(uri.getScheme()) ? 8883 : 1883);
+            }
+            cfg.setSslEnabled(isSslScheme(uri.getScheme()));
+        } catch (Exception e) {
+            log.warn("解析 MQTT 地址失败: {}", connectionConfig.getBrokerUrl(), e);
+            cfg.setHost(deviceInfo.getIpAddress());
+            cfg.setPort(deviceInfo.getPort());
+        }
+        return cfg;
+    }
+
+    private Map<String, Object> buildProtocolOverrides() {
+        Map<String, Object> overrides = new HashMap<>();
+        if (deviceInfo.getProtocolConfig() != null) {
+            overrides.putAll(deviceInfo.getProtocolConfig());
+        }
+        overrides.put("version", connectionConfig.getVersion().name());
+        overrides.put("cleanSession", connectionConfig.isCleanSession());
+        overrides.put("autoReconnect", connectionConfig.isAutomaticReconnect());
+        List<String> topics = new java.util.ArrayList<>();
+        for (MqttTopicSubscription sub : connectionConfig.getDefaultTopics()) {
+            if (sub.getTopic() != null && !sub.getTopic().isBlank()) {
+                topics.add(sub.getTopic());
+            }
+        }
+        if (!topics.isEmpty()) {
+            overrides.put("subscribeTopics", topics);
+            overrides.put("subscribeQos", connectionConfig.getDefaultQos());
+        }
+        return overrides;
+    }
+
+    private boolean isSslScheme(String scheme) {
+        if (scheme == null) {
+            return false;
+        }
+        String lower = scheme.toLowerCase(Locale.ROOT);
+        return lower.startsWith("ssl") || lower.startsWith("tls") || lower.startsWith("mqtts");
+    }
+
     private MqttPointOptions resolvePointOptions(DataPoint point) {
         return pointOptions.computeIfAbsent(point.getPointId(),
                 id -> MqttPointOptions.from(point, connectionConfig != null ? connectionConfig.getDefaultQos() : 1));
@@ -221,9 +322,15 @@ public class MqttCollector extends BaseCollector {
     }
 
     private synchronized void ensureTopicSubscription(String topic, int qos) throws Exception {
+        if (topic == null || topic.isBlank()) {
+            return;
+        }
+        if (mqttConnection == null) {
+            throw new IllegalStateException("MQTT连接未建立");
+        }
         int count = topicRefCount.getOrDefault(topic, 0);
-        if (count == 0 && clientAdapter != null) {
-            clientAdapter.subscribe(topic, qos);
+        if (count == 0 && !mqttConnection.isSubscribed(topic)) {
+            mqttConnection.subscribe(topic, qos);
         }
         topicRefCount.put(topic, count + 1);
     }
@@ -235,8 +342,8 @@ public class MqttCollector extends BaseCollector {
         }
         if (current <= 1) {
             topicRefCount.remove(topic);
-            if (!baseSubscribedTopics.contains(topic) && clientAdapter != null) {
-                clientAdapter.unsubscribe(topic);
+            if (!baseSubscribedTopics.contains(topic) && mqttConnection != null) {
+                mqttConnection.unsubscribe(topic);
             }
         } else {
             topicRefCount.put(topic, current - 1);
@@ -244,10 +351,10 @@ public class MqttCollector extends BaseCollector {
     }
 
     private void publish(String topic, byte[] payload, int qos, boolean retained) throws Exception {
-        if (clientAdapter == null || !clientAdapter.isConnected()) {
+        if (mqttConnection == null || !mqttConnection.isConnected()) {
             throw new IllegalStateException("MQTT client not connected");
         }
-        clientAdapter.publish(topic, payload, qos, retained);
+        mqttConnection.publish(topic, payload, qos, retained);
     }
 
     private byte[] buildPayloadForWrite(Object value, MqttPointOptions options) {
@@ -296,6 +403,18 @@ public class MqttCollector extends BaseCollector {
             decrementTopicSubscription(topic);
         }
         return Map.of("topic", topic, "status", "unsubscribed");
+    }
+
+    private void handleInboundMessage(MqttReceivedMessage message) {
+        if (message == null) {
+            return;
+        }
+        MqttMessageEnvelope envelope = new MqttMessageEnvelope(
+                message.getPayload(),
+                message.getQos(),
+                message.isRetained(),
+                message.getUserProperties());
+        handleIncomingMessage(message.getTopic(), envelope);
     }
 
     private void handleIncomingMessage(String topic, MqttMessageEnvelope envelope) {

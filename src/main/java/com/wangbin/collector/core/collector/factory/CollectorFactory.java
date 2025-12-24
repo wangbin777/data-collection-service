@@ -4,6 +4,8 @@ import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.exception.CollectorException;
 import com.wangbin.collector.core.collector.protocol.base.ProtocolCollector;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -15,6 +17,9 @@ import java.util.Map;
 @Slf4j
 @Component
 public class CollectorFactory {
+
+    @Autowired
+    private AutowireCapableBeanFactory beanFactory;
 
     private final Map<String, CollectorCreator> collectorCreators = new HashMap<>();
 
@@ -42,6 +47,9 @@ public class CollectorFactory {
 
         try {
             ProtocolCollector collector = creator.create(deviceInfo);
+            if (beanFactory != null) {
+                beanFactory.autowireBean(collector);
+            }
             collector.init(deviceInfo);
 
             log.info("采集器创建成功: {} [{}]",

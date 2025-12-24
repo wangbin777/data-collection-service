@@ -25,6 +25,12 @@ public class MqttConnectionConfig {
     private final MqttProtocolVersion version;
     private final int defaultQos;
     private final List<MqttTopicSubscription> defaultTopics;
+    private final int maxPendingMessages;
+    private final int dispatchBatchSize;
+    private final long dispatchFlushIntervalMillis;
+    private final String overflowStrategy;
+    private final String groupId;
+    private final int maxGroupConnections;
 
     private MqttConnectionConfig(String brokerUrl,
                                  String clientId,
@@ -36,7 +42,13 @@ public class MqttConnectionConfig {
                                  boolean automaticReconnect,
                                  MqttProtocolVersion version,
                                  int defaultQos,
-                                 List<MqttTopicSubscription> defaultTopics) {
+                                 List<MqttTopicSubscription> defaultTopics,
+                                 int maxPendingMessages,
+                                 int dispatchBatchSize,
+                                 long dispatchFlushIntervalMillis,
+                                 String overflowStrategy,
+                                 String groupId,
+                                 int maxGroupConnections) {
         this.brokerUrl = brokerUrl;
         this.clientId = clientId;
         this.username = username;
@@ -48,6 +60,12 @@ public class MqttConnectionConfig {
         this.version = version;
         this.defaultQos = defaultQos;
         this.defaultTopics = defaultTopics;
+        this.maxPendingMessages = maxPendingMessages;
+        this.dispatchBatchSize = dispatchBatchSize;
+        this.dispatchFlushIntervalMillis = dispatchFlushIntervalMillis;
+        this.overflowStrategy = overflowStrategy;
+        this.groupId = groupId;
+        this.maxGroupConnections = maxGroupConnections;
     }
 
     public static MqttConnectionConfig from(DeviceInfo deviceInfo, CollectorProperties.MqttConfig defaults) {
@@ -66,8 +84,15 @@ public class MqttConnectionConfig {
         int qos = getInt(protocol, "qos", defaults.getQos());
         MqttProtocolVersion version = MqttProtocolVersion.fromText(getString(protocol, "version", "v5"));
         List<MqttTopicSubscription> topics = parseTopics(protocol != null ? protocol.get("subscribeTopics") : null, qos);
+        int maxPending = getInt(protocol, "maxPendingMessages", defaults.getMaxPendingMessages());
+        int batchSize = getInt(protocol, "dispatchBatchSize", defaults.getDispatchBatchSize());
+        long flushInterval = getLong(protocol, "dispatchFlushInterval", defaults.getDispatchFlushInterval());
+        String overflow = getString(protocol, "overflowStrategy", defaults.getOverflowStrategy());
+        String groupId = getString(protocol, "groupId", deviceInfo.getGroupId());
+        int maxGroupConnections = getInt(protocol, "maxGroupConnections", defaults.getMaxGroupConnections());
         return new MqttConnectionConfig(broker, clientId, username, password, cleanSession,
-                timeout, keepAlive, autoReconnect, version, qos, topics);
+                timeout, keepAlive, autoReconnect, version, qos, topics,
+                maxPending, batchSize, flushInterval, overflow, groupId, maxGroupConnections);
     }
 
     private static String getString(Map<String, Object> map, String key, String defaultValue) {
@@ -92,6 +117,24 @@ public class MqttConnectionConfig {
         }
         Object value = map.get(key);
         return value != null ? MqttCollectorUtils.asBoolean(value, defaultValue) : defaultValue;
+    }
+
+    private static long getLong(Map<String, Object> map, String key, long defaultValue) {
+        if (map == null || key == null) {
+            return defaultValue;
+        }
+        Object value = map.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException ex) {
+            return defaultValue;
+        }
     }
 
     private static List<MqttTopicSubscription> parseTopics(Object value, int defaultQos) {

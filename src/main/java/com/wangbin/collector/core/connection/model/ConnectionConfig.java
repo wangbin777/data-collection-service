@@ -17,6 +17,8 @@ public class ConnectionConfig {
     private String deviceName;
     private String protocolType;
     private String connectionType;
+    private String groupId;
+    private Integer maxGroupConnections = 0;
     private String host;
     private Integer port;
     private String url;
@@ -52,6 +54,10 @@ public class ConnectionConfig {
     private Boolean keepAlive = true;
     private Integer bufferSize = 8192;
     private Boolean autoReconnect = true;
+    private Integer maxPendingMessages = 5000;
+    private Integer dispatchBatchSize = 1;
+    private Long dispatchFlushInterval = 0L;
+    private String overflowStrategy = "BLOCK";
     private Map<String, Object> extraParams;
 
     // 获取完整地址
