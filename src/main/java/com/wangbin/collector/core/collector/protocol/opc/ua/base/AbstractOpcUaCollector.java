@@ -114,7 +114,7 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
     protected Object readValue(OpcUaAddress address) throws Exception {
         NodeId nodeId = address.toNodeId();
         DataValue value = client.readValue(0, TimestampsToReturn.Both, nodeId);
-        return value.getValue() != null ? value.getValue().getValue() : null;
+        return value.getValue().getValue();
     }
 
     protected Map<String, Object> readValues(List<DataPoint> points) throws Exception {
@@ -128,7 +128,7 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
         for (int i = 0; i < points.size(); i++) {
             DataValue value = values.get(i);
             result.put(points.get(i).getPointId(),
-                    value != null && value.getValue() != null ? value.getValue().getValue() : null);
+                    value != null ? value.getValue().getValue() : null);
         }
         return result;
     }

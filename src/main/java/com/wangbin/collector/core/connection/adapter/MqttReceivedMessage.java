@@ -1,5 +1,7 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import lombok.Getter;
+
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
@@ -9,10 +11,14 @@ import java.util.Map;
  */
 public class MqttReceivedMessage {
 
+    @Getter
     private final String topic;
     private final byte[] payload;
+    @Getter
     private final int qos;
+    @Getter
     private final boolean retained;
+    @Getter
     private final Map<String, String> userProperties;
     private final long receivedTime;
 
@@ -40,24 +46,8 @@ public class MqttReceivedMessage {
         this.receivedTime = receivedTime;
     }
 
-    public String getTopic() {
-        return topic;
-    }
-
     public byte[] getPayload() {
         return Arrays.copyOf(payload, payload.length);
-    }
-
-    public int getQos() {
-        return qos;
-    }
-
-    public boolean isRetained() {
-        return retained;
-    }
-
-    public Map<String, String> getUserProperties() {
-        return userProperties;
     }
 
     public long getReceivedTime() {

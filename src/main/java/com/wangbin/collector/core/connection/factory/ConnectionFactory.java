@@ -21,7 +21,7 @@ public class ConnectionFactory {
             throw new IllegalArgumentException("连接配置无效");
         }
 
-        String connectionType = config.getConnectionType().toUpperCase();
+        String connectionType = config.getConnectionType().toUpperCase().replace("-", "_");
 
         return switch (connectionType) {
             case "TCP" -> createTcpConnection(config);
@@ -32,6 +32,7 @@ public class ConnectionFactory {
             case "MODBUS_TCP" -> createModbusTcpConnection(config);
             case "MODBUS_RTU" -> createModbusRtuConnection(config);
             case "SNMP" -> createSnmpConnection(config);
+            case "OPC_UA", "OPCUA" -> createOpcUaConnection(config);
             default -> throw new CollectorException(
                     String.format("不支持的连接类型: %s", connectionType),
                     config.getDeviceId(), null
@@ -123,6 +124,15 @@ public class ConnectionFactory {
         }
     }
 
+    private ConnectionAdapter createOpcUaConnection(ConnectionConfig config) {
+        try {
+            return new OpcUaConnectionAdapter(config);
+        } catch (Exception e) {
+            log.error("创建OPC UA连接失败: {}", config.getDeviceId(), e);
+            throw new CollectorException("创建OPC UA连接失败", config.getDeviceId(), null);
+        }
+    }
+
     /**
      * 根据协议类型创建连接
      */
@@ -174,4 +184,3 @@ public class ConnectionFactory {
         return createConnection(config);
     }
 }
-
