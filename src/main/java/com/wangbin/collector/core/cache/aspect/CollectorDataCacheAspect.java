@@ -1,20 +1,19 @@
 package com.wangbin.collector.core.cache.aspect;
 
 import com.wangbin.collector.common.domain.entity.DataPoint;
-import com.wangbin.collector.core.cache.manager.CacheManager;
 import com.wangbin.collector.core.cache.manager.MultiLevelCacheManager;
-import com.wangbin.collector.core.cache.model.CacheData;
 import com.wangbin.collector.core.cache.model.CacheKey;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
-import com.wangbin.collector.core.collector.protocol.base.ProtocolCollector;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Pointcut;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -56,18 +55,10 @@ public class CollectorDataCacheAspect {
             // 获取方法参数
             DataPoint point = (DataPoint) joinPoint.getArgs()[0];
             
-            // 创建缓存键
-            CacheKey cacheKey = CacheKey.dataKey(collector.getDeviceInfo().getDeviceId(), point.getPointId());
-            
-            // 创建缓存数据
-            CacheData cacheData = new CacheData(cacheKey, result);
-            
-            // 保存到缓存
-            multiLevelCacheManager.put(cacheKey, result);
-            
-            log.debug("采集数据缓存成功：{}.{} = {}", collector.getDeviceInfo().getDeviceId(), point.getPointName(), result);
+            // 异步保存到缓存
+            asyncSaveToCache(collector.getDeviceInfo().getDeviceId(), point, result);
         } catch (Exception e) {
-            log.error("采集数据缓存失败", e);
+            log.error("准备异步缓存数据失败", e);
         }
     }
 
@@ -83,21 +74,56 @@ public class CollectorDataCacheAspect {
             // 获取方法参数
             List<DataPoint> points = (List<DataPoint>) joinPoint.getArgs()[0];
             
-            // 遍历结果，保存到缓存
+            // 异步批量保存到缓存
+            asyncBatchSaveToCache(collector.getDeviceInfo().getDeviceId(), points, result);
+        } catch (Exception e) {
+            log.error("准备批量异步缓存数据失败", e);
+        }
+    }
+
+    /**
+     * 异步保存到缓存
+     */
+    @Async("cacheAsyncExecutor")
+    protected <T> void asyncSaveToCache(String deviceId, DataPoint point, T value) {
+        try {
+            // 创建缓存键
+            CacheKey cacheKey = CacheKey.dataKey(deviceId, point.getPointId());
+            
+            // 保存到缓存
+            multiLevelCacheManager.put(cacheKey, value);
+            
+            log.debug("异步缓存数据成功：{}.{} = {}", deviceId, point.getPointName(), value);
+        } catch (Exception e) {
+            log.error("异步缓存数据失败", e);
+        }
+    }
+
+    /**
+     * 异步批量保存到缓存
+     */
+    @Async("cacheAsyncExecutor")
+    protected <T> void asyncBatchSaveToCache(String deviceId, List<DataPoint> points, Map<String, T> values) {
+        try {
+            // 构建批量缓存数据
+            Map<CacheKey, T> cacheDataMap = new HashMap<>();
             for (DataPoint point : points) {
-                Object value = result.get(point.getPointId());
+                T value = values.get(point.getPointId());
                 if (value != null) {
                     // 创建缓存键
-                    CacheKey cacheKey = CacheKey.dataKey(collector.getDeviceInfo().getDeviceId(), point.getPointId());
-                    
-                    // 保存到缓存
-                    multiLevelCacheManager.put(cacheKey, value);
+                    CacheKey cacheKey = CacheKey.dataKey(deviceId, point.getPointId());
+                    cacheDataMap.put(cacheKey, value);
                 }
             }
             
-            log.debug("批量采集数据缓存成功：{}，共 {} 个点位", collector.getDeviceInfo().getDeviceId(), result.size());
+            // 批量保存到缓存
+            if (!cacheDataMap.isEmpty()) {
+                multiLevelCacheManager.putAll(cacheDataMap);
+            }
+            
+            log.debug("异步批量缓存数据成功：{}，共 {} 个点位", deviceId, cacheDataMap.size());
         } catch (Exception e) {
-            log.error("批量采集数据缓存失败", e);
+            log.error("异步批量缓存数据失败", e);
         }
     }
 }
