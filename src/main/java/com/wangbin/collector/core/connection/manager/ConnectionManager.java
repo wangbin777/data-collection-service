@@ -316,7 +316,7 @@ public class ConnectionManager {
                         notifyHeartbeatTimeout(connection);
 
                         // 如果配置了自动重连，则尝试重连
-                        if (connection.getConfig().getAutoReconnect()) {
+                        if (connection.getConfig().isAutoReconnect()) {
                             reconnect(connection.getDeviceId());
                         }
                     } else {

@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * WebSocket连接适配器（实现AutoCloseable接口用于资源清理）
  */
 @Slf4j
-public class WebSocketConnectionAdapter extends AbstractConnectionAdapter implements AutoCloseable {
+public class WebSocketConnectionAdapter extends AbstractConnectionAdapter<WebSocket> implements AutoCloseable {
 
     private WebSocket webSocket;
     private HttpClient httpClient;
@@ -289,7 +289,7 @@ public class WebSocketConnectionAdapter extends AbstractConnectionAdapter implem
     }
 
     @Override
-    protected void doSend(byte[] data) throws Exception {
+    protected void doSend(byte[] data) throws UnsupportedOperationException {
         if (webSocket == null || webSocket.isOutputClosed()) {
             throw new IllegalStateException("WebSocket连接未激活");
         }
@@ -316,25 +316,34 @@ public class WebSocketConnectionAdapter extends AbstractConnectionAdapter implem
             log.debug("WebSocket发送数据成功: {} bytes", data.length);
 
         } catch (TimeoutException e) {
-            throw new Exception("WebSocket发送超时", e);
+            throw new UnsupportedOperationException("WebSocket发送超时: " + e.getMessage(), e);
         } catch (Exception e) {
-            throw new Exception("WebSocket发送失败: " + e.getMessage(), e);
+            throw new UnsupportedOperationException("WebSocket发送失败: " + e.getMessage(), e);
         }
     }
 
     @Override
-    protected byte[] doReceive() throws Exception {
-        return doReceive(config.getReadTimeout());
+    protected byte[] doReceive() throws UnsupportedOperationException {
+        try {
+            return doReceive(config.getReadTimeout());
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("WebSocket接收操作失败: " + e.getMessage(), e);
+        }
     }
 
     @Override
-    protected byte[] doReceive(long timeout) throws Exception {
+    protected byte[] doReceive(long timeout) throws UnsupportedOperationException {
         try {
             return messageQueue.poll(timeout, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new Exception("WebSocket接收消息被中断", e);
+            throw new UnsupportedOperationException("WebSocket接收消息被中断: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public WebSocket getClient() {
+        return webSocket;
     }
 
     @Override

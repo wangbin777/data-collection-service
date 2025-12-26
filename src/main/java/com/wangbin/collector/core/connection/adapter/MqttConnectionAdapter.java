@@ -43,7 +43,7 @@ import java.util.function.Consumer;
  * MQTT连接适配器，同时支持 Paho v3 与 v5 客户端，并提供统一的消息监听机制。
  */
 @Slf4j
-public class MqttConnectionAdapter extends AbstractConnectionAdapter
+public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
         implements MqttCallback, MqttCallbackExtended {
 
     private MqttAsyncClient mqttClientV5;
@@ -404,10 +404,14 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter
     }
 
     @Override
-    protected void doSend(byte[] data) throws Exception {
-        publishInternal(getPublishTopic(), data,
-                config.getIntConfig("publishQos", 1),
-                config.getBoolConfig("retained", false));
+    protected void doSend(byte[] data) throws UnsupportedOperationException {
+        try {
+            publishInternal(getPublishTopic(), data,
+                    config.getIntConfig("publishQos", 1),
+                    config.getBoolConfig("retained", false));
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("MQTT发送操作失败", e);
+        }
     }
 
     private String getPublishTopic() {
@@ -451,12 +455,16 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter
     }
 
     @Override
-    protected byte[] doReceive() throws Exception {
-        return doReceive(config.getReadTimeout());
+    protected byte[] doReceive() throws UnsupportedOperationException {
+        try {
+            return doReceive(config.getReadTimeout());
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("MQTT接收操作失败", e);
+        }
     }
 
     @Override
-    protected byte[] doReceive(long timeout) throws Exception {
+    protected byte[] doReceive(long timeout) throws UnsupportedOperationException {
         if (receiveBuffer == null) {
             return null;
         }
@@ -467,7 +475,9 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter
             return message != null ? message.getPayload() : null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new Exception("MQTT接收消息被中断", e);
+            throw new UnsupportedOperationException("MQTT接收消息被中断", e);
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("MQTT接收操作失败", e);
         }
     }
 
@@ -661,5 +671,10 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter
         properties.getUserProperties()
                 .forEach(prop -> result.put(prop.getKey(), prop.getValue()));
         return result;
+    }
+
+    @Override
+    public Object getClient() {
+        return useMqttV5 ? mqttClientV5 : mqttClientV3;
     }
 }

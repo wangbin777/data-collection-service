@@ -186,6 +186,28 @@ public class CollectorFactory {
             }
         });
 
+        // HTTP协议
+        registerCollector("HTTP", deviceInfo -> {
+            try {
+                Class<?> clazz = Class.forName(
+                        "com.wangbin.collector.core.collector.protocol.http.HttpCollector");
+                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new RuntimeException("HTTP采集器加载失败", e);
+            }
+        });
+
+        // WebSocket协议
+        registerCollector("WEBSOCKET", deviceInfo -> {
+            try {
+                Class<?> clazz = Class.forName(
+                        "com.wangbin.collector.core.collector.protocol.websocket.WebSocketCollector");
+                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
+            } catch (Exception e) {
+                throw new RuntimeException("WebSocket采集器加载失败", e);
+            }
+        });
+
         log.info("采集器工厂初始化完成，支持 {} 种协议", collectorCreators.size());
     }
 
@@ -197,3 +219,4 @@ public class CollectorFactory {
         ProtocolCollector create(DeviceInfo deviceInfo) throws Exception;
     }
 }
+

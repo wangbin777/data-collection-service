@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  * HTTP连接适配器（使用Java 11+ HttpClient）
  */
 @Slf4j
-public class HttpConnectionAdapter extends AbstractConnectionAdapter {
+public class HttpConnectionAdapter extends AbstractConnectionAdapter<HttpClient> {
 
     private HttpClient httpClient;
     private String baseUrl;
@@ -158,45 +158,62 @@ public class HttpConnectionAdapter extends AbstractConnectionAdapter {
     }
 
     @Override
-    protected void doSend(byte[] data) throws Exception {
-        String method = config.getStringConfig("method", "POST");
-        String endpoint = config.getStringConfig("sendEndpoint", "/api/data");
+    protected void doSend(byte[] data) throws UnsupportedOperationException {
+        try {
+            String method = config.getStringConfig("method", "POST");
+            String endpoint = config.getStringConfig("sendEndpoint", "/api/data");
 
-        HttpRequest request = buildRequest(method, endpoint, data);
-        HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpRequest request = buildRequest(method, endpoint, data);
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
-        if (response.statusCode() >= 200 && response.statusCode() < 300) {
-            log.debug("HTTP发送成功: {} -> {} ({} bytes)",
-                    baseUrl + endpoint, response.statusCode(), data.length);
-        } else {
-            throw new Exception("HTTP发送失败: 状态码 " + response.statusCode());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                log.debug("HTTP发送成功: {} -> {} ({} bytes)",
+                        baseUrl + endpoint, response.statusCode(), data.length);
+            } else {
+                throw new Exception("HTTP发送失败: 状态码 " + response.statusCode());
+            }
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("HTTP发送操作失败: " + e.getMessage(), e);
         }
     }
 
     @Override
-    protected byte[] doReceive() throws Exception {
-        return doReceive(config.getReadTimeout());
+    protected byte[] doReceive() throws UnsupportedOperationException {
+        try {
+            return doReceive(config.getReadTimeout());
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("HTTP接收操作失败: " + e.getMessage(), e);
+        }
     }
 
     @Override
-    protected byte[] doReceive(long timeout) throws Exception {
-        String endpoint = config.getStringConfig("receiveEndpoint", "/api/receive");
-        String method = config.getStringConfig("receiveMethod", "GET");
+    protected byte[] doReceive(long timeout) throws UnsupportedOperationException {
+        try {
+            String endpoint = config.getStringConfig("receiveEndpoint", "/api/receive");
+            String method = config.getStringConfig("receiveMethod", "GET");
 
-        HttpRequest request = buildRequest(method, endpoint, null);
+            HttpRequest request = buildRequest(method, endpoint, null);
 
-        // 设置自定义超时
-        HttpClient tempClient = httpClient.newBuilder()
-                .connectTimeout(Duration.ofMillis(timeout))
-                .build();
+            // 设置自定义超时
+            HttpClient tempClient = httpClient.newBuilder()
+                    .connectTimeout(Duration.ofMillis(timeout))
+                    .build();
 
-        HttpResponse<byte[]> response = tempClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response = tempClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
 
-        if (response.statusCode() >= 200 && response.statusCode() < 300) {
-            return response.body();
-        } else {
-            throw new Exception("HTTP接收失败: 状态码 " + response.statusCode());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                return response.body();
+            } else {
+                throw new Exception("HTTP接收失败: 状态码 " + response.statusCode());
+            }
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("HTTP接收操作失败: " + e.getMessage(), e);
         }
+    }
+
+    @Override
+    public HttpClient getClient() {
+        return httpClient;
     }
 
     @Override

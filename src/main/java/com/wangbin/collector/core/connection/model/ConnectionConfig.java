@@ -53,7 +53,55 @@ public class ConnectionConfig {
     private Charset charset = StandardCharsets.UTF_8;
     private Boolean keepAlive = true;
     private Integer bufferSize = 8192;
-    private Boolean autoReconnect = true;
+    /**
+     * 重连相关配置
+     */
+    private boolean autoReconnect = true; // 是否启用自动重连
+    private long initialReconnectDelay = 1000; // 初始重连延迟（毫秒）
+    private long maxReconnectDelay = 60000; // 最大重连延迟（毫秒）
+    private int maxReconnectAttempts = -1; // 最大重连尝试次数（-1表示无限制）
+    private double reconnectBackoffMultiplier = 2.0; // 重连延迟乘数因子
+
+    // Getters and setters for reconnection configuration
+    public boolean isAutoReconnect() {
+        return autoReconnect;
+    }
+
+    public void setAutoReconnect(boolean autoReconnect) {
+        this.autoReconnect = autoReconnect;
+    }
+
+    public long getInitialReconnectDelay() {
+        return initialReconnectDelay;
+    }
+
+    public void setInitialReconnectDelay(long initialReconnectDelay) {
+        this.initialReconnectDelay = initialReconnectDelay;
+    }
+
+    public long getMaxReconnectDelay() {
+        return maxReconnectDelay;
+    }
+
+    public void setMaxReconnectDelay(long maxReconnectDelay) {
+        this.maxReconnectDelay = maxReconnectDelay;
+    }
+
+    public int getMaxReconnectAttempts() {
+        return maxReconnectAttempts;
+    }
+
+    public void setMaxReconnectAttempts(int maxReconnectAttempts) {
+        this.maxReconnectAttempts = maxReconnectAttempts;
+    }
+
+    public double getReconnectBackoffMultiplier() {
+        return reconnectBackoffMultiplier;
+    }
+
+    public void setReconnectBackoffMultiplier(double reconnectBackoffMultiplier) {
+        this.reconnectBackoffMultiplier = reconnectBackoffMultiplier;
+    }
     private Integer maxPendingMessages = 5000;
     private Integer dispatchBatchSize = 1;
     private Long dispatchFlushInterval = 0L;
@@ -196,3 +244,4 @@ public class ConnectionConfig {
         return null;
     }
 }
+

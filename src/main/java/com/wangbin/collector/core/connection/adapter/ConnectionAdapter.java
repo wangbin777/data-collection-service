@@ -8,8 +8,9 @@ import java.util.Map;
 
 /**
  * 连接适配器接口
+ * @param <C> 协议客户端类型
  */
-public interface ConnectionAdapter {
+public interface ConnectionAdapter<C> {
 
     /**
      * 建立连接
@@ -112,6 +113,11 @@ public interface ConnectionAdapter {
     void updateActivityTime();
 
     /**
+     * 获取协议特定客户端
+     */
+    C getClient();
+
+    /**
      * 获取连接参数
      */
     Map<String, Object> getConnectionParams();
@@ -130,4 +136,10 @@ public interface ConnectionAdapter {
      * 重置统计信息
      */
     void resetStatistics();
+
+    /**
+     * 执行连接健康检查
+     * @return 连接是否健康
+     */
+    boolean healthCheck();
 }

@@ -23,7 +23,7 @@ import java.util.concurrent.TimeoutException;
  * SNMP 连接适配器，封装会话管理与批量调度。
  */
 @Slf4j
-public class SnmpConnectionAdapter extends AbstractConnectionAdapter {
+public class SnmpConnectionAdapter extends AbstractConnectionAdapter<Snmp> {
 
     private Snmp snmp;
     private TransportMapping<UdpAddress> transport;
@@ -125,6 +125,11 @@ public class SnmpConnectionAdapter extends AbstractConnectionAdapter {
     @Override
     protected void doAuthenticate() {
         // SNMPv1/2c 默认无额外认证
+    }
+
+    @Override
+    public Snmp getClient() {
+        return snmp;
     }
 
     private long getDefaultTimeout() {

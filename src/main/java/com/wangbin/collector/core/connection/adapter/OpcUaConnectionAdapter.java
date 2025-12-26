@@ -10,7 +10,11 @@ import org.eclipse.milo.opcua.sdk.client.identity.AnonymousProvider;
 import org.eclipse.milo.opcua.sdk.client.identity.IdentityProvider;
 import org.eclipse.milo.opcua.sdk.client.identity.UsernameProvider;
 import org.eclipse.milo.opcua.stack.core.security.SecurityPolicy;
+import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue;
+import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId;
 import org.eclipse.milo.opcua.stack.core.types.enumerated.MessageSecurityMode;
+import org.eclipse.milo.opcua.stack.core.types.enumerated.TimestampsToReturn;
+import org.eclipse.milo.opcua.stack.core.types.enumerated.UserTokenType;
 import org.eclipse.milo.opcua.stack.core.types.structured.EndpointDescription;
 import org.eclipse.milo.opcua.stack.core.types.structured.UserTokenPolicy;
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.Unsigned;
@@ -23,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  * OPC UA connection adapter backed by Milo {@link OpcUaClient}.
  */
 @Slf4j
-public class OpcUaConnectionAdapter extends AbstractConnectionAdapter {
+public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClient> {
 
     private static final String OPC_POLICY_URI_PREFIX = "http://opcfoundation.org/UA/SecurityPolicy#";
 
@@ -57,7 +61,7 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter {
         connectionParams.put("endpointUrl", endpointUrl);
         connectionParams.put("securityPolicy", securityPolicy);
         connectionParams.put("securityMode", securityMode != null ? securityMode.name() : MessageSecurityMode.None.name());
-        metrics.setStatus(status);
+        metrics.setStatus(getStatus());
     }
 
     @Override
@@ -74,29 +78,23 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter {
     }
 
     @Override
-    protected void doSend(byte[] data) {
-        throw new UnsupportedOperationException("OPC UA adapter does not support raw send operations");
-    }
-
-    @Override
-    protected byte[] doReceive() {
-        throw new UnsupportedOperationException("OPC UA adapter does not support raw receive operations");
-    }
-
-    @Override
-    protected byte[] doReceive(long timeout) {
-        throw new UnsupportedOperationException("OPC UA adapter does not support raw receive operations");
-    }
-
-    @Override
     protected void doHeartbeat() {
         if (client == null) {
             throw new IllegalStateException("OPC UA client is not connected");
         }
-        /*UaStackClient stackClient = client.getStackClient();
-        if (stackClient == null || stackClient.getChannel() == null || !stackClient.getChannel().isActive()) {
-            throw new IllegalStateException("OPC UA channel is not active");
-        }*/
+        // Send a simple request to verify connection is working
+        try {
+            // Use server time node reading as heartbeat check
+            // OPC UA standard node: ServerStatus.CurrentTime
+            NodeId timeNodeId = NodeId.parse("i=2258");
+            DataValue value =
+                client.readValue(0, TimestampsToReturn.Both, timeNodeId);
+            if (value == null || value.getValue() == null) {
+                throw new IllegalStateException("OPC UA heartbeat failed: No response from server");
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("OPC UA heartbeat failed: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -104,6 +102,7 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter {
         // OPC UA authentication handled during connection handshake.
     }
 
+    @Override
     public OpcUaClient getClient() {
         return client;
     }
@@ -138,10 +137,10 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter {
             return text;
         }
         for (SecurityPolicy value : SecurityPolicy.values()) {
-            /*if (value.getSecurityPolicyUri().equalsIgnoreCase(text) ||
+            if (value.getUri().equalsIgnoreCase(text) ||
                     value.name().equalsIgnoreCase(text)) {
-                return value.getSecurityPolicyUri();
-            }*/
+                return value.getUri();
+            }
         }
         return text;
     }
@@ -229,11 +228,19 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter {
             return false;
         }
         for (UserTokenPolicy policy : policies) {
-            /*if (policy != null && policy.getTokenType() == UserTokenType.UserName) {
+            if (policy != null && policy.getTokenType() == UserTokenType.UserName) {
                 return true;
-            }*/
+            }
         }
         return false;
     }
 
 }
+
+
+
+
+
+
+
+

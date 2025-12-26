@@ -238,7 +238,7 @@ public class CoapCollector extends AbstractCoapCollector {
     private Object doCommandDiscover() throws Exception {
         Set<WebLink> resources = coapConnection != null
                 ? coapConnection.execute(adapter -> {
-                    CoapClient client = adapter.getBaseClient();
+                    CoapClient client = adapter.getClient();
                     if (client == null) {
                         throw new IllegalStateException("CoAP base client unavailable");
                     }

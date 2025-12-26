@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
  * TCP连接适配器
  */
 @Slf4j
-public class TcpConnectionAdapter extends AbstractConnectionAdapter {
+public class TcpConnectionAdapter extends AbstractConnectionAdapter<Channel> {
 
     private Bootstrap bootstrap;
     private Channel channel;
@@ -106,29 +106,41 @@ public class TcpConnectionAdapter extends AbstractConnectionAdapter {
     }
 
     @Override
-    protected void doSend(byte[] data) throws Exception {
-        if (channel == null || !channel.isActive()) {
-            throw new IllegalStateException("TCP连接未激活");
-        }
-
-        ChannelFuture future = channel.writeAndFlush(data).sync();
-        if (!future.isSuccess()) {
-            try {
-                throw future.cause();
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
+    protected void doSend(byte[] data) throws UnsupportedOperationException {
+        try {
+            if (channel == null || !channel.isActive()) {
+                throw new IllegalStateException("TCP连接未激活");
             }
+
+            ChannelFuture future = channel.writeAndFlush(data).sync();
+            if (!future.isSuccess()) {
+                try {
+                    throw future.cause();
+                } catch (Throwable e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("TCP发送操作失败", e);
         }
     }
 
     @Override
-    protected byte[] doReceive() throws Exception {
-        return clientHandler.receive(config.getReadTimeout());
+    protected byte[] doReceive() throws UnsupportedOperationException {
+        try {
+            return clientHandler.receive(config.getReadTimeout());
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("TCP接收操作失败", e);
+        }
     }
 
     @Override
-    protected byte[] doReceive(long timeout) throws Exception {
-        return clientHandler.receive(timeout);
+    protected byte[] doReceive(long timeout) throws UnsupportedOperationException {
+        try {
+            return clientHandler.receive(timeout);
+        } catch (Exception e) {
+            throw new UnsupportedOperationException("TCP接收操作失败", e);
+        }
     }
 
     @Override
@@ -177,6 +189,11 @@ public class TcpConnectionAdapter extends AbstractConnectionAdapter {
     private boolean verifyAuthResponse(byte[] response) {
         String responseStr = new String(response, StandardCharsets.UTF_8);
         return responseStr.startsWith("AUTH_SUCCESS");
+    }
+
+    @Override
+    public Channel getClient() {
+        return channel;
     }
 
     /**

@@ -39,7 +39,7 @@ import java.util.function.Consumer;
 public abstract class AbstractOpcUaCollector extends BaseCollector {
 
     // 使用统一连接管理
-    private ConnectionAdapter connectionAdapter;
+    private ConnectionAdapter<OpcUaClient> connectionAdapter;
     protected OpcUaClient client;
     protected CollectorProperties.OpcUaConfig opcUaConfig;
 
@@ -64,8 +64,8 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
         connectionAdapter = connectionManager.createConnection(config);
         connectionAdapter.connect();
         
-        // 获取OPC UA客户端
-        client = ((OpcUaConnectionAdapter) connectionAdapter).getClient();
+        // 获取OPC UA客户端（无需类型转换）
+        client = connectionAdapter.getClient();
     }
 
     @Override

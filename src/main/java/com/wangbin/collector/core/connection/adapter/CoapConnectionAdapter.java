@@ -17,7 +17,7 @@ import java.util.concurrent.TimeoutException;
  * CoAP 连接适配器，将请求调度到批量分发线程中执行。
  */
 @Slf4j
-public class CoapConnectionAdapter extends AbstractConnectionAdapter {
+public class CoapConnectionAdapter extends AbstractConnectionAdapter<CoapClient> {
 
     private CoapClient baseClient;
     private String baseUri;
@@ -61,7 +61,8 @@ public class CoapConnectionAdapter extends AbstractConnectionAdapter {
         return config.getTimeout() != null ? config.getTimeout() : 3000;
     }
 
-    public CoapClient getBaseClient() {
+    @Override
+    public CoapClient getClient() {
         return baseClient;
     }
 
@@ -195,3 +196,4 @@ public class CoapConnectionAdapter extends AbstractConnectionAdapter {
         }
     }
 }
+
