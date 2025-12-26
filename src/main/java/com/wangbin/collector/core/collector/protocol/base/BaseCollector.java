@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * 基础采集器抽象类
@@ -186,40 +187,62 @@ public abstract class BaseCollector implements ProtocolCollector {
         try {
             log.debug("批量读取点位: {}, 数量: {}", deviceInfo.getDeviceId(), points.size());
 
-            // 执行实际批量读取逻辑
-            Map<String, Object> rawValues = doReadPoints(points);
+            // 1. 提前过滤：移除无效的数据点
+            List<DataPoint> validPoints = points.stream()
+                    .filter(point -> point != null && point.isEnabled())
+                    .collect(Collectors.toList());
 
-            // 数据转换和验证
-            for (DataPoint point : points) {
-                String pointId = point.getPointId();
-                Object rawValue = rawValues.get(pointId);
-
-                if (rawValue != null) {
-                    Object processedValue = convertData(point, rawValue);
-
-                    // 数据质量检查（替代原有的validateData方法）
-                    ProcessContext context = new ProcessContext();
-                    context.addAttribute("deviceId", deviceInfo.getDeviceId());
-                    ProcessResult processResult = dataQualityProcessor.process(context, point, processedValue);
-
-                    // 如果处理失败，不缓存数据
-                    if (!processResult.isSuccess()) {
-                        log.warn("数据质量检查失败，不缓存数据: {}.{}, 原因: {}",
-                                deviceInfo.getDeviceId(), point.getPointName(), processResult.getMessage());
-                    }
-
-                    results.put(pointId, processedValue);
-                } else {
-                    results.put(pointId, null);
-                }
+            if (validPoints.isEmpty()) {
+                log.debug("没有有效点位需要读取: {}", deviceInfo.getDeviceId());
+                return results;
             }
 
+            // 2. 批量读取原始数据
+            Map<String, Object> rawValues = doReadPoints(validPoints);
+
+            // 3. 并行处理数据转换和质量检查
+            Map<String, Object> processedValues = validPoints.parallelStream()
+                    .collect(Collectors.toConcurrentMap(
+                            DataPoint::getPointId, 
+                            point -> {
+                                try {
+                                    String pointId = point.getPointId();
+                                    Object rawValue = rawValues.get(pointId);
+
+                                    if (rawValue == null) {
+                                        return null;
+                                    }
+
+                                    // 数据转换
+                                    Object processedValue = convertData(point, rawValue);
+
+                                    // 数据质量检查（替代原有的validateData方法）
+                                    ProcessContext context = new ProcessContext();
+                                    context.addAttribute("deviceId", deviceInfo.getDeviceId());
+                                    ProcessResult processResult = dataQualityProcessor.process(context, point, processedValue);
+
+                                    // 如果处理失败，不缓存数据（在AOP中会检查）
+                                    if (!processResult.isSuccess()) {
+                                        log.warn("数据质量检查失败，不缓存数据: {}.{}, 原因: {}",
+                                                deviceInfo.getDeviceId(), point.getPointName(), processResult.getMessage());
+                                    }
+
+                                    return processedValue;
+                                } catch (Exception e) {
+                                    log.error("处理点位数据失败: {}.{}", deviceInfo.getDeviceId(), point.getPointName(), e);
+                                    return null;
+                                }
+                            }
+                    ));
+
+            results.putAll(processedValues);
+
             // 更新统计
-            totalReadCount.addAndGet(points.size());
+            totalReadCount.addAndGet(validPoints.size());
             totalReadTime.addAndGet(System.currentTimeMillis() - startTime);
             lastActivityTime = System.currentTimeMillis();
 
-            log.debug("批量点位读取成功: {}, 数量: {},值：{}", deviceInfo.getDeviceId(), points.size(),new ObjectMapper().writeValueAsString(rawValues));
+            log.debug("批量点位读取成功: {}, 数量: {}, 值：{}", deviceInfo.getDeviceId(), validPoints.size(), new ObjectMapper().writeValueAsString(rawValues));
 
             return results;
         } catch (Exception e) {

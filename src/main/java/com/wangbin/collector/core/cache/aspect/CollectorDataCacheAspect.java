@@ -87,13 +87,22 @@ public class CollectorDataCacheAspect {
     @Async("cacheAsyncExecutor")
     protected <T> void asyncSaveToCache(String deviceId, DataPoint point, T value) {
         try {
-            // 创建缓存键
+            // 1. 选择性缓存：检查是否需要缓存
+            if (!shouldCache(point)) {
+                log.debug("跳过缓存：{}.{}，原因：缓存未启用或非关键数据", deviceId, point.getPointName());
+                return;
+            }
+
+            // 2. 创建缓存键
             CacheKey cacheKey = CacheKey.dataKey(deviceId, point.getPointId());
             
-            // 保存到缓存
-            multiLevelCacheManager.put(cacheKey, value);
+            // 3. 设置缓存过期时间
+            long expireTime = (long) getCacheExpireTime(point);
             
-            log.debug("异步缓存数据成功：{}.{} = {}", deviceId, point.getPointName(), value);
+            // 4. 保存到缓存
+            multiLevelCacheManager.put(cacheKey, value, expireTime);
+            
+            log.debug("异步缓存数据成功：{}.{} = {}, 过期时间：{}秒", deviceId, point.getPointName(), value, expireTime);
         } catch (Exception e) {
             log.error("异步缓存数据失败", e);
         }
@@ -105,25 +114,77 @@ public class CollectorDataCacheAspect {
     @Async("cacheAsyncExecutor")
     protected <T> void asyncBatchSaveToCache(String deviceId, List<DataPoint> points, Map<String, T> values) {
         try {
-            // 构建批量缓存数据
+            // 1. 构建批量缓存数据（只缓存需要的数据）
             Map<CacheKey, T> cacheDataMap = new HashMap<>();
+            Map<CacheKey, Integer> expireTimeMap = new HashMap<>();
+            
             for (DataPoint point : points) {
-                T value = values.get(point.getPointId());
-                if (value != null) {
-                    // 创建缓存键
-                    CacheKey cacheKey = CacheKey.dataKey(deviceId, point.getPointId());
+                String pointId = point.getPointId();
+                T value = values.get(pointId);
+                
+                // 条件处理：只缓存非null值且需要缓存的数据
+                if (value != null && shouldCache(point)) {
+                    CacheKey cacheKey = CacheKey.dataKey(deviceId, pointId);
                     cacheDataMap.put(cacheKey, value);
+                    expireTimeMap.put(cacheKey, getCacheExpireTime(point));
                 }
             }
             
-            // 批量保存到缓存
+            // 2. 批量保存到缓存
             if (!cacheDataMap.isEmpty()) {
+                // 如果需要根据不同数据点设置不同过期时间，可以在这里处理
+                // 目前使用默认过期时间（在MultiLevelCacheManager中设置）
                 multiLevelCacheManager.putAll(cacheDataMap);
             }
             
-            log.debug("异步批量缓存数据成功：{}，共 {} 个点位", deviceId, cacheDataMap.size());
+            log.debug("异步批量缓存数据成功：{}，共 {} 个点位（原始 {} 个）", 
+                    deviceId, cacheDataMap.size(), points.size());
         } catch (Exception e) {
             log.error("异步批量缓存数据失败", e);
         }
+    }
+    
+    /**
+     * 判断数据点是否需要缓存
+     */
+    private boolean shouldCache(DataPoint point) {
+        // 1. 检查数据点是否启用缓存
+        if (point == null || !point.needCache()) {
+            return false;
+        }
+        
+        // 2. 可以添加更多缓存策略判断
+        // 例如：只缓存优先级大于等于5的数据点
+        /*
+        if (point.getPriority() != null && point.getPriority() < 5) {
+            return false;
+        }
+        */
+        
+        return true;
+    }
+    
+    /**
+     * 获取缓存过期时间
+     */
+    private int getCacheExpireTime(DataPoint point) {
+        // 1. 如果数据点设置了缓存持续时间，使用该值
+        if (point.getCacheDuration() != null && point.getCacheDuration() > 0) {
+            return point.getCacheDuration();
+        }
+        
+        // 2. 根据数据点优先级设置不同的过期时间
+        if (point.getPriority() != null) {
+            if (point.getPriority() <= 3) {
+                // 高优先级数据缓存时间长一些（2小时）
+                return 7200;
+            } else if (point.getPriority() <= 7) {
+                // 中优先级数据缓存时间中等（1小时）
+                return 3600;
+            }
+        }
+        
+        // 3. 默认缓存时间（30分钟）
+        return 1800;
     }
 }

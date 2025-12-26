@@ -131,6 +131,15 @@ public class MultiLevelCacheManager implements CacheManager {
             return false;
         }
 
+        // 数据变化检测：检查新值与现有缓存是否相同，如果相同则跳过更新
+        T existingValue = get(key);
+        if (existingValue != null && existingValue.equals(value)) {
+            log.debug("缓存数据未变化，跳过更新: key={}", key);
+            // 只更新过期时间
+            expire(key, expireTime);
+            return true;
+        }
+
         totalWrites.incrementAndGet();
         String lockKey = key.getFullKey();
 
@@ -183,17 +192,34 @@ public class MultiLevelCacheManager implements CacheManager {
     @Override
     public <T> boolean putAll(Map<CacheKey, T> dataMap) {
         if (!enabled || dataMap == null || dataMap.isEmpty()) {
-            return false;
+            return true;
         }
 
         boolean allSuccess = true;
+        int updatedCount = 0;
+
         for (Map.Entry<CacheKey, T> entry : dataMap.entrySet()) {
-            boolean success = put(entry.getKey(), entry.getValue());
+            CacheKey key = entry.getKey();
+            T value = entry.getValue();
+
+            // 数据变化检测：检查新值与现有缓存是否相同，如果相同则跳过更新
+            T existingValue = get(key);
+            if (existingValue != null && existingValue.equals(value)) {
+                log.debug("缓存数据未变化，跳过更新: key={}", key);
+                // 只更新过期时间
+                expire(key, key.getExpireTime());
+                continue;
+            }
+
+            updatedCount++;
+            boolean success = put(key, value);
             if (!success) {
                 allSuccess = false;
-                log.warn("批量缓存写入失败: key={}", entry.getKey());
             }
         }
+
+        log.debug("批量缓存写入完成: 总数={}, 更新={}, 跳过={}, 全部成功={}",
+                dataMap.size(), updatedCount, dataMap.size() - updatedCount, allSuccess);
 
         return allSuccess;
     }
