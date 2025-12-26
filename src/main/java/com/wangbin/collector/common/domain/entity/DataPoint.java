@@ -1,8 +1,11 @@
 package com.wangbin.collector.common.domain.entity;
 
+import com.wangbin.collector.common.domain.entity.AlarmRule;
+
 import lombok.Data;
 
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -154,7 +157,7 @@ public class DataPoint {
      * 告警规则配置（JSON格式）
      * 示例: {"threshold": 100, "comparison": ">", "duration": 60}
      */
-    private String alarmRule;
+    private List<AlarmRule> alarmRule;
 
     /**
      * 数据点状态

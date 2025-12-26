@@ -7,6 +7,10 @@ import com.wangbin.collector.common.domain.enums.DataQuality;
 import com.wangbin.collector.common.exception.CollectorException;
 import com.wangbin.collector.core.config.CollectorProperties;
 import com.wangbin.collector.core.connection.manager.ConnectionManager;
+import com.wangbin.collector.core.processor.DataQualityProcessor;
+import com.wangbin.collector.core.processor.ProcessContext;
+import com.wangbin.collector.core.processor.ProcessResult;
+
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +28,15 @@ public abstract class BaseCollector implements ProtocolCollector {
 
     @Getter
     protected DeviceInfo deviceInfo;
+
+    @Autowired
+    protected CollectorProperties collectorProperties;
+
+    @Autowired
+    protected ConnectionManager connectionManager;
+
+    @Autowired
+    protected DataQualityProcessor dataQualityProcessor;
 
     protected boolean connected = false;
     protected String connectionStatus = "DISCONNECTED";
@@ -49,12 +62,6 @@ public abstract class BaseCollector implements ProtocolCollector {
 
     // 使用Map存储订阅的点位对象，而不是Set只存ID
     protected final Map<String, DataPoint> subscribedPointMap = new ConcurrentHashMap<>();
-
-    @Autowired
-    protected CollectorProperties collectorProperties;
-
-    @Autowired
-    protected ConnectionManager connectionManager;
 
     @Override
     public void init(DeviceInfo deviceInfo) throws CollectorException {
@@ -139,8 +146,17 @@ public abstract class BaseCollector implements ProtocolCollector {
             // 数据转换
             Object processedValue = convertData(point, rawValue);
 
-            // 数据验证
-            validateData(point, processedValue);
+            // 数据质量检查（替代原有的validateData方法）
+            ProcessContext context = new ProcessContext();
+            context.addAttribute("deviceId", deviceInfo.getDeviceId());
+            ProcessResult processResult = dataQualityProcessor.process(context, point, processedValue);
+
+            // 如果处理失败，不缓存数据
+            if (!processResult.isSuccess()) {
+                log.warn("数据质量检查失败，不缓存数据: {}.{}, 原因: {}",
+                        deviceInfo.getDeviceId(), point.getPointName(), processResult.getMessage());
+                // 这里不抛出异常，继续返回数据，但标记为无效
+            }
 
             // 更新统计
             totalReadCount.incrementAndGet();
@@ -180,7 +196,18 @@ public abstract class BaseCollector implements ProtocolCollector {
 
                 if (rawValue != null) {
                     Object processedValue = convertData(point, rawValue);
-                    validateData(point, processedValue);
+
+                    // 数据质量检查（替代原有的validateData方法）
+                    ProcessContext context = new ProcessContext();
+                    context.addAttribute("deviceId", deviceInfo.getDeviceId());
+                    ProcessResult processResult = dataQualityProcessor.process(context, point, processedValue);
+
+                    // 如果处理失败，不缓存数据
+                    if (!processResult.isSuccess()) {
+                        log.warn("数据质量检查失败，不缓存数据: {}.{}, 原因: {}",
+                                deviceInfo.getDeviceId(), point.getPointName(), processResult.getMessage());
+                    }
+
                     results.put(pointId, processedValue);
                 } else {
                     results.put(pointId, null);
@@ -218,8 +245,16 @@ public abstract class BaseCollector implements ProtocolCollector {
                         point.getPointId(), DataQuality.CONFIG_ERROR);
             }
 
-            // 数据验证
-            validateData(point, value);
+            // 数据质量检查
+            ProcessContext context = new ProcessContext();
+            context.addAttribute("deviceId", deviceInfo.getDeviceId());
+            ProcessResult processResult = dataQualityProcessor.process(context, point, value);
+
+            // 如果数据无效，不允许写入
+            if (!processResult.isSuccess()) {
+                throw new CollectorException("数据质量检查失败: " + processResult.getMessage(), 
+                        deviceInfo.getDeviceId(), point.getPointId(), DataQuality.VALUE_INVALID);
+            }
 
             // 数据转换（反向）
             Object rawValue = convertDataForWrite(point, value);
@@ -267,16 +302,28 @@ public abstract class BaseCollector implements ProtocolCollector {
                     continue;
                 }
 
-                // 数据验证
-                validateData(point, value);
+                // 数据质量检查
+                ProcessContext context = new ProcessContext();
+                context.addAttribute("deviceId", deviceInfo.getDeviceId());
+                ProcessResult processResult = dataQualityProcessor.process(context, point, value);
+
+                // 如果数据无效，不允许写入
+                if (!processResult.isSuccess()) {
+                    log.warn("数据质量检查失败，不允许写入: {}.{}, 原因: {}",
+                            deviceInfo.getDeviceId(), point.getPointName(), processResult.getMessage());
+                    results.put(point.getPointId(), false);
+                    continue;
+                }
 
                 // 数据转换（反向）
                 Object rawValue = convertDataForWrite(point, value);
                 rawValues.put(point, rawValue);
+                results.put(point.getPointId(), true);
             }
 
             // 执行实际批量写入逻辑
             Map<String, Boolean> writeResults = doWritePoints(rawValues);
+            results.putAll(writeResults);
 
             // 更新统计
             totalWriteCount.addAndGet(points.size());
@@ -285,7 +332,7 @@ public abstract class BaseCollector implements ProtocolCollector {
 
             log.debug("批量点位写入成功: {}, 数量: {}", deviceInfo.getDeviceId(), points.size());
 
-            return writeResults;
+            return results;
         } catch (Exception e) {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();

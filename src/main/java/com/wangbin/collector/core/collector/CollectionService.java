@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -59,7 +60,7 @@ public class CollectionService {
     /**
      * 获取运行中的设备列表
      */
-    public java.util.List<String> getRunningDevices() {
+    public List<String> getRunningDevices() {
         return collectionScheduler.getRunningDevices();
     }
 

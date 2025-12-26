@@ -1,8 +1,10 @@
 package com.wangbin.collector.common.utils;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.wangbin.collector.common.domain.entity.AlarmRule;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
@@ -173,7 +175,12 @@ public class JsonDataPointLoader {
                 //if (map.containsKey("stringLength")) point.setStringLength(toInteger(map.get("stringLength")));
 
                 // 设置复杂属性
-                if (map.containsKey("alarmRule")) point.setAlarmRule((String) map.get("alarmRule"));
+                if (map.containsKey("alarmRule")) point.setAlarmRule(objectMapper.readValue(
+                        (String) map.get("alarmRule"),
+                        new TypeReference<>() {
+                        }
+                ));
+
                 if (map.containsKey("remark")) point.setRemark((String) map.get("remark"));
 
                 Map<String, Object> additional = point.getAdditionalConfig() != null
