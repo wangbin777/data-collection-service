@@ -6,13 +6,12 @@ import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.opc.ua.domain.OpcUaAddress;
 import com.wangbin.collector.core.collector.protocol.opc.ua.util.OpcUaAddressParser;
 import com.wangbin.collector.core.config.CollectorProperties;
+import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
+import com.wangbin.collector.core.connection.adapter.OpcUaConnectionAdapter;
+import com.wangbin.collector.core.connection.manager.ConnectionManager;
+import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.milo.opcua.sdk.client.DiscoveryClient;
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
-import org.eclipse.milo.opcua.sdk.client.OpcUaClientConfigBuilder;
-import org.eclipse.milo.opcua.sdk.client.identity.AnonymousProvider;
-import org.eclipse.milo.opcua.sdk.client.identity.IdentityProvider;
-import org.eclipse.milo.opcua.sdk.client.identity.UsernameProvider;
 import org.eclipse.milo.opcua.sdk.client.subscriptions.MonitoredItemServiceOperationResult;
 import org.eclipse.milo.opcua.sdk.client.subscriptions.OpcUaMonitoredItem;
 import org.eclipse.milo.opcua.sdk.client.subscriptions.OpcUaSubscription;
@@ -27,7 +26,6 @@ import org.eclipse.milo.opcua.stack.core.types.enumerated.DeadbandType;
 import org.eclipse.milo.opcua.stack.core.types.enumerated.MonitoringMode;
 import org.eclipse.milo.opcua.stack.core.types.enumerated.TimestampsToReturn;
 import org.eclipse.milo.opcua.stack.core.types.structured.DataChangeFilter;
-import org.eclipse.milo.opcua.stack.core.types.structured.EndpointDescription;
 import org.eclipse.milo.opcua.stack.core.types.structured.MonitoringFilter;
 
 import java.util.*;
@@ -40,6 +38,8 @@ import java.util.function.Consumer;
 @Slf4j
 public abstract class AbstractOpcUaCollector extends BaseCollector {
 
+    // 使用统一连接管理
+    private ConnectionAdapter connectionAdapter;
     protected OpcUaClient client;
     protected CollectorProperties.OpcUaConfig opcUaConfig;
 
@@ -51,6 +51,68 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
     protected double subscriptionInterval = 1000;
 
     protected final Map<String, OpcUaSubscription> subscriptions = new ConcurrentHashMap<>();
+
+    @Override
+    protected void doConnect() throws Exception {
+        // 初始化配置
+        initOpcUaConfig(deviceInfo);
+        
+        // 构建连接配置
+        ConnectionConfig config = buildConnectionConfig();
+        
+        // 创建并建立连接
+        connectionAdapter = connectionManager.createConnection(config);
+        connectionAdapter.connect();
+        
+        // 获取OPC UA客户端
+        client = ((OpcUaConnectionAdapter) connectionAdapter).getClient();
+    }
+
+    @Override
+    protected void doDisconnect() {
+        if (connectionAdapter != null) {
+            try {
+                connectionAdapter.disconnect();
+                connectionManager.removeConnection(deviceInfo.getDeviceId());
+            } catch (Exception e) {
+                log.error("断开OPC UA连接失败", e);
+            }
+        }
+        subscriptions.clear();
+    }
+
+    /**
+     * 构建连接配置
+     */
+    private ConnectionConfig buildConnectionConfig() {
+        ConnectionConfig config = new ConnectionConfig();
+        config.setDeviceId(deviceInfo.getDeviceId());
+        config.setDeviceName(deviceInfo.getDeviceName());
+        config.setProtocolType("OPC_UA");
+        config.setConnectionType("OPC_UA");
+        config.setGroupId(deviceInfo.getGroupId());
+        
+        // 设置OPC UA特定配置
+        config.setUrl(endpointUrl);
+        
+        Map<String, Object> protocolConfig = new HashMap<>();
+        protocolConfig.put("endpointUrl", endpointUrl);
+        protocolConfig.put("securityPolicy", securityPolicy);
+        if (username != null && !username.isEmpty()) {
+            protocolConfig.put("username", username);
+            protocolConfig.put("password", password);
+        }
+        protocolConfig.put("requestTimeout", requestTimeout);
+        
+        config.setProtocolConfig(protocolConfig);
+        
+        // 设置连接超时
+        config.setConnectTimeout(requestTimeout);
+        config.setReadTimeout(requestTimeout);
+        config.setWriteTimeout(requestTimeout);
+        
+        return config;
+    }
 
     protected void initOpcUaConfig(DeviceInfo deviceInfo) {
         this.opcUaConfig = collectorProperties != null
@@ -76,39 +138,6 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
                 ? Integer.parseInt(protocol.get("requestTimeout").toString())
                 : opcUaConfig.getRequestTimeout();
         subscriptionInterval = opcUaConfig.getSubscriptionInterval();
-    }
-
-    protected void connectClient() throws Exception {
-        List<EndpointDescription> endpoints = discoverEndpoints(endpointUrl);
-        EndpointDescription endpoint = selectEndpoint(endpoints);
-
-        OpcUaClientConfigBuilder builder = new OpcUaClientConfigBuilder();
-        builder.setEndpoint(endpoint);
-        builder.setRequestTimeout(Unsigned.uint(requestTimeout));
-        builder.setIdentityProvider(resolveIdentityProvider());
-
-        client = OpcUaClient.create(builder.build());
-        client.connect();
-        log.info("OPC UA连接成功 endpoint={}", endpointUrl);
-    }
-
-    protected void disconnectClient() {
-        subscriptions.values().forEach(subscription -> {
-            try {
-                subscription.delete();
-            } catch (Exception e) {
-                log.debug("删除订阅失败", e);
-            }
-        });
-        subscriptions.clear();
-        if (client != null) {
-            try {
-                client.disconnect();
-            } catch (Exception e) {
-                log.warn("OPC UA断开异常", e);
-            }
-            client = null;
-        }
     }
 
     protected Object readValue(OpcUaAddress address) throws Exception {
@@ -190,36 +219,5 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
                 Unsigned.uint(DeadbandType.Absolute.getValue()),
                 address.getDeadband()
         );
-    }
-
-    private List<EndpointDescription> discoverEndpoints(String url) throws Exception {
-        try {
-            return DiscoveryClient.getEndpoints(url).get();
-        } catch (Exception e) {
-            if (!url.endsWith("/discovery")) {
-                return DiscoveryClient.getEndpoints(url + "/discovery").get();
-            }
-            throw e;
-        }
-    }
-
-    private EndpointDescription selectEndpoint(List<EndpointDescription> endpoints) {
-        if (endpoints == null || endpoints.isEmpty()) {
-            throw new IllegalStateException("没有可用的OPC UA端点: " + endpointUrl);
-        }
-        if (securityPolicy == null || securityPolicy.isBlank()) {
-            return endpoints.get(0);
-        }
-        return endpoints.stream()
-                .filter(e -> e.getSecurityPolicyUri() != null && e.getSecurityPolicyUri().contains(securityPolicy))
-                .findFirst()
-                .orElse(endpoints.get(0));
-    }
-
-    private IdentityProvider resolveIdentityProvider() {
-        if (username != null && !username.isBlank()) {
-            return new UsernameProvider(username, password != null ? password : "");
-        }
-        return new AnonymousProvider();
     }
 }

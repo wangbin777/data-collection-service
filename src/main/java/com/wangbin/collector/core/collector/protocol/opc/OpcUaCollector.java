@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
  *   - 写入和命令都走同步方法，一旦 OPC UA 服务器慢，会阻塞业务线程；如果高并发写入或命令调用比较多，可以按照 Milo 的 async API 把阻塞交给线程池，避免 collector 主循环被拖慢。
  *   - 网络层缺少断线重连/超时处理，现在只在连接失败时抛异常；生产环境最好加上重试与状态监控，否则 OPC UA 服务器重启或网络抖动，采集会长时间中断。
  *
- *   总的来说，代码结构简单，适合中等规模设备（几十到一两百个监控点）和秒级刷新。如果要支撑成百上千点或者亚秒级刷新，需要进一步改造批处理策略、并发模型以及连接重用/重连逻辑。下一步可以结合目标点数和期望周期做一次压测，根据实际延迟/
+ *   总的来说，代码很简单，适合中等规模设备（几十到一两百个监控点）和秒级刷新。如果要支撑成百上千点或者亚秒级刷新，需要进一步改造批处理策略、并发模型以及连接重用/重连逻辑。下一步可以结合目标点数和期望周期做一次压测，根据实际延迟/
  *   吞吐数据再定调优方案。
  */
 @Slf4j
@@ -54,17 +54,13 @@ public class OpcUaCollector extends AbstractOpcUaCollector {
     }
 
     @Override
-    protected void doConnect() throws Exception {
-        initOpcUaConfig(deviceInfo);
-        connectClient();
-    }
-
-    @Override
     protected void doDisconnect() {
+        // 清理监控项和订阅
         monitoredItems.clear();
         pointSubscriptions.clear();
         addressCache.clear();
-        disconnectClient();
+        // 调用父类的断开逻辑
+        super.doDisconnect();
     }
 
     @Override
