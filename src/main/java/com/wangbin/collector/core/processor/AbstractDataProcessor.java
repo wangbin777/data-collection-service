@@ -105,8 +105,8 @@ public abstract class AbstractDataProcessor implements DataProcessor {
                 averageProcessingTime.set(totalProcessingTime.get() / total);
             }
 
-            log.debug("数据处理完成: processor={}, point={}, success={}, time={}ms",
-                    getName(), point.getPointName(), result.isSuccess(), processingTime);
+            log.debug("数据处理完成: processor={}, point={}, rawValu={}，processedValue={}， success={}, time={}ms",
+                    getName(), point.getPointName(),result.getRawValue(),result.getProcessedValue(), result.isSuccess(), processingTime);
 
             return result;
         } catch (Exception e) {
