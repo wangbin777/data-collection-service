@@ -219,4 +219,4 @@ public class CollectorFactory {
         ProtocolCollector create(DeviceInfo deviceInfo) throws Exception;
     }
 }
-
+
