@@ -198,6 +198,32 @@ public class ConfigManager {
     }
 
     /**
+     * 根据pointId获取单个数据点配置
+     *
+     * @param deviceId 设备ID
+     * @param pointId 数据点ID
+     * @return 数据点配置，不存在返回null
+     */
+    public DataPoint getDataPointByPointId(String deviceId, String pointId) {
+        Objects.requireNonNull(deviceId, "设备ID不能为空");
+        Objects.requireNonNull(pointId, "数据点ID不能为空");
+
+        lock.readLock().lock();
+        try {
+            List<DataPoint> points = pointCache.get(deviceId);
+            if (points != null) {
+                return points.stream()
+                        .filter(p -> pointId.equals(p.getPointId()))
+                        .findFirst()
+                        .orElse(null);
+            }
+            return null;
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
      * 获取连接配置
      *
      * @param deviceId 设备ID
