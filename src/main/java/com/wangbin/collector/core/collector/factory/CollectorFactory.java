@@ -47,9 +47,6 @@ public class CollectorFactory {
 
         try {
             ProtocolCollector collector = creator.create(deviceInfo);
-            if (beanFactory != null) {
-                beanFactory.autowireBean(collector);
-            }
             collector.init(deviceInfo);
 
             log.info("采集器创建成功: {} [{}]",
@@ -91,124 +88,73 @@ public class CollectorFactory {
      */
     private void registerCollectorCreators() {
         // Modbus协议
-        registerCollector("MODBUS_TCP", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.modbus.ModbusTcpCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("Modbus TCP采集器加载失败", e);
-            }
-        });
+        registerCollector("MODBUS_TCP", deviceInfo -> instantiateCollector(
+                "MODBUS_TCP",
+                "com.wangbin.collector.core.collector.protocol.modbus.ModbusTcpCollector"));
 
-        registerCollector("MODBUS_RTU", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.modbus.ModbusRtuCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("Modbus RTU采集器加载失败", e);
-            }
-        });
+        registerCollector("MODBUS_RTU", deviceInfo -> instantiateCollector(
+                "MODBUS_RTU",
+                "com.wangbin.collector.core.collector.protocol.modbus.ModbusRtuCollector"));
 
         // OPC协议
-        registerCollector("OPC_DA", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.opc.OpcDaCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("OPC DA采集器加载失败", e);
-            }
-        });
+        registerCollector("OPC_DA", deviceInfo -> instantiateCollector(
+                "OPC_DA",
+                "com.wangbin.collector.core.collector.protocol.opc.OpcDaCollector"));
 
-        registerCollector("OPC_UA", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.opc.OpcUaCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("OPC UA采集器加载失败", e);
-            }
-        });
+        registerCollector("OPC_UA", deviceInfo -> instantiateCollector(
+                "OPC_UA",
+                "com.wangbin.collector.core.collector.protocol.opc.OpcUaCollector"));
 
         // SNMP协议
-        registerCollector("SNMP", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.snmp.SnmpCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("SNMP采集器加载失败", e);
-            }
-        });
+        registerCollector("SNMP", deviceInfo -> instantiateCollector(
+                "SNMP",
+                "com.wangbin.collector.core.collector.protocol.snmp.SnmpCollector"));
 
         // MQTT协议
-        registerCollector("MQTT", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.mqtt.MqttCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("MQTT采集器加载失败", e);
-            }
-        });
+        registerCollector("MQTT", deviceInfo -> instantiateCollector(
+                "MQTT",
+                "com.wangbin.collector.core.collector.protocol.mqtt.MqttCollector"));
 
         // IEC协议
-        registerCollector("IEC104", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.iec.Iec104Collector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("IEC104采集器加载失败", e);
-            }
-        });
+        registerCollector("IEC104", deviceInfo -> instantiateCollector(
+                "IEC104",
+                "com.wangbin.collector.core.collector.protocol.iec.Iec104Collector"));
 
-        registerCollector("IEC61850", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.iec.Iec61850Collector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("IEC61850采集器加载失败", e);
-            }
-        });
+        registerCollector("IEC61850", deviceInfo -> instantiateCollector(
+                "IEC61850",
+                "com.wangbin.collector.core.collector.protocol.iec.Iec61850Collector"));
 
         // 自定义协议
-        registerCollector("CUSTOM_TCP", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.custom.CustomProtocolCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("自定义TCP采集器加载失败", e);
-            }
-        });
+        registerCollector("CUSTOM_TCP", deviceInfo -> instantiateCollector(
+                "CUSTOM_TCP",
+                "com.wangbin.collector.core.collector.protocol.custom.CustomProtocolCollector"));
 
         // HTTP协议
-        registerCollector("HTTP", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.http.HttpCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("HTTP采集器加载失败", e);
-            }
-        });
+        registerCollector("HTTP", deviceInfo -> instantiateCollector(
+                "HTTP",
+                "com.wangbin.collector.core.collector.protocol.http.HttpCollector"));
 
         // WebSocket协议
-        registerCollector("WEBSOCKET", deviceInfo -> {
-            try {
-                Class<?> clazz = Class.forName(
-                        "com.wangbin.collector.core.collector.protocol.websocket.WebSocketCollector");
-                return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new RuntimeException("WebSocket采集器加载失败", e);
-            }
-        });
+        registerCollector("WEBSOCKET", deviceInfo -> instantiateCollector(
+                "WEBSOCKET",
+                "com.wangbin.collector.core.collector.protocol.websocket.WebSocketCollector"));
 
         log.info("采集器工厂初始化完成，支持 {} 种协议", collectorCreators.size());
+    }
+
+    /**
+     * 使用Spring BeanFactory创建采集器实例，确保AOP等BeanPostProcessor生效
+     */
+    private ProtocolCollector instantiateCollector(String protocolType, String className) {
+        try {
+            Class<?> clazz = Class.forName(className);
+            if (beanFactory != null) {
+                return (ProtocolCollector) beanFactory.createBean(clazz);
+            }
+            return (ProtocolCollector) clazz.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException(String.format("%s采集器加载失败", protocolType), e);
+        }
     }
 
     /**

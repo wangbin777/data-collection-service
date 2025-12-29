@@ -350,7 +350,7 @@ mybatis:
 # ============================================
 logging:
   level:
-    com.wangbin.collector: DEBUG
+    com.wangbin.collector: INFO
     org.springframework: INFO
     org.springframework.web: INFO
   pattern:

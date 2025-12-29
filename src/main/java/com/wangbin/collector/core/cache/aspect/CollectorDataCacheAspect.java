@@ -32,14 +32,14 @@ public class CollectorDataCacheAspect {
     /**
      * 定义切点：拦截BaseCollector类及其子类的readPoint方法
      */
-    @Pointcut("execution(* com.wangbin.collector.core.collector.protocol.base.BaseCollector.readPoint(..))")
+    @Pointcut("execution(* com.wangbin.collector.core.collector.protocol.base.ProtocolCollector.readPoint(..))")
     public void readPointPointcut() {
     }
 
     /**
      * 定义切点：拦截BaseCollector类及其子类的readPoints方法
      */
-    @Pointcut("execution(* com.wangbin.collector.core.collector.protocol.base.BaseCollector.readPoints(..))")
+    @Pointcut("execution(* com.wangbin.collector.core.collector.protocol.base.ProtocolCollector.readPoints(..))")
     public void readPointsPointcut() {
     }
 

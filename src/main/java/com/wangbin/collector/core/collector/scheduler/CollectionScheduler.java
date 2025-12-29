@@ -802,9 +802,7 @@ public class CollectionScheduler {
      * 启动性能监控
      */
     private void startPerformanceMonitoring() {
-        timeSliceScheduler.scheduleAtFixedRate(() -> {
-            performanceMonitor.logStatistics();
-        }, 60, 60, TimeUnit.SECONDS);  // 每分钟输出一次统计
+        timeSliceScheduler.scheduleAtFixedRate(performanceMonitor::logStatistics, 60, 60, TimeUnit.SECONDS);  // 每分钟输出一次统计
     }
 
     /**
@@ -990,9 +988,9 @@ public class CollectionScheduler {
         }
 
         void logStatistics() {
-            long totalPoints = totalProcessedPoints.get();
-            long successfulBatches = totalSuccessfulBatches.get();
-            long failedBatches = totalFailedBatches.get();
+            long totalPoints = totalProcessedPoints.getAndSet(0);
+            long successfulBatches = totalSuccessfulBatches.getAndSet(0);
+            long failedBatches = totalFailedBatches.getAndSet(0);
 
             double pointsPerSecond = totalPoints / 60.0;  // 每分钟统计
 

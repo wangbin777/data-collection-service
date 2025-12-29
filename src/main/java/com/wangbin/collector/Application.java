@@ -9,6 +9,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 @EnableConfigurationProperties
 @EnableAsync
 @EnableScheduling
+@EnableAspectJAutoProxy // 启用AspectJ自动代理并使用CGLIB代理
 @Slf4j
 public class Application {
 
@@ -61,3 +63,5 @@ public class Application {
         };
     }*/
 }
+
+
