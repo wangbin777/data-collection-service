@@ -12,10 +12,10 @@
     </encoder>
   </appender>
 
-  <root level="DEBUG">
+  <root level="INFO">
     <appender-ref ref="STDOUT"/>
   </root>
 
-  <logger name="com.wangbin.collector" level="DEBUG"/>
+  <logger name="com.wangbin.collector" level="INFO"/>
 
 </configuration>

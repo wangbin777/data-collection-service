@@ -249,20 +249,26 @@ public class MultiLevelCacheManager implements CacheManager {
                         continue;
                     }
 
-                    T foundValue = manager.get(key, type);
-                    if (foundValue != null) {
-                        value = foundValue;
-                        hitLevel = manager.getCacheLevel();
+                    try {
+                        T foundValue = manager.get(key, type);
+                        if (foundValue != null) {
+                            value = foundValue;
+                            hitLevel = manager.getCacheLevel();
 
-                        // 更新命中统计
-                        updateHitStatistics(hitLevel);
+                            // 更新命中统计
+                            updateHitStatistics(hitLevel);
 
-                        // 如果读穿透开启且不是最高级别命中，则更新低级别缓存
-                        if (readThrough && hitLevel > 1) {
-                            asyncUpdateLowerLevels(key, value, hitLevel);
+                            // 如果读穿透开启且不是最高级别命中，则更新低级别缓存
+                            if (readThrough && hitLevel > 1) {
+                                asyncUpdateLowerLevels(key, value, hitLevel);
+                            }
+
+                            break;
                         }
-
-                        break;
+                    } catch (Exception e) {
+                        // 某个缓存级别失败，记录日志并继续尝试下一个缓存级别
+                        log.warn("缓存读取失败: {} [Level: {}], 将尝试下一个缓存级别", 
+                                manager.getCacheType(), manager.getCacheLevel(), e);
                     }
                 }
 
