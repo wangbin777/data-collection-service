@@ -51,7 +51,7 @@ public class DataController {
             Object value = cacheManager.get(cacheKey);
             
             // 获取数据点信息
-            DataPoint dataPoint = configManager.getDataPoint(deviceId, pointId);
+            DataPoint dataPoint = configManager.getDataPointByPointId(deviceId, pointId);
             
             if (dataPoint != null) {
                 result.put("deviceId", deviceId);
