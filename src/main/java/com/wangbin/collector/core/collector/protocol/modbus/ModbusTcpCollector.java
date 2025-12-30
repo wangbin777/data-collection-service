@@ -23,7 +23,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Modbus TCP閲囬泦鍣紙绠€鍖栫増锛?
+ * Modbus TCP采集器
  */
 @Slf4j
 @Component
@@ -47,7 +47,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
     @Override
     protected void doConnect() throws Exception {
-        log.info("寮€濮嬪缓绔婱odbus TCP杩炴帴: {}", deviceInfo.getDeviceId());
+        log.info("开始建立Modbus TCP连接: {}", deviceInfo.getDeviceId());
         this.managedConnectionConfig = buildConnectionConfig();
         ConnectionAdapter adapter = connectionManager.createConnection(managedConnectionConfig);
         connectionManager.connect(deviceInfo.getDeviceId());
@@ -58,7 +58,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         this.timeout = managedConnectionConfig.getReadTimeout() != null
                 ? managedConnectionConfig.getReadTimeout()
                 : managedConnectionConfig.getTimeout();
-        log.info("Modbus TCP杩炴帴寤虹珛鎴愬姛: {}:{}", host, port);
+        log.info("Modbus TCP连接建立成功: {}:{}", host, port);
     }
 
     @Override
@@ -69,14 +69,14 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         connectionAdapter = null;
         managedConnectionConfig = null;
         registerCache.clear();
-        log.info("Modbus TCP杩炴帴宸叉柇寮€");
+        log.info("Modbus TCP连接已断开");
     }
 
     @Override
     protected Object doReadPoint(DataPoint point) throws Exception {
         String address = point.getAddress();
         if (address == null || address.isEmpty()) {
-            throw new IllegalArgumentException("鐐逛綅鍦板潃涓嶈兘涓虹┖");
+            throw new IllegalArgumentException("点位地址不能为空");
         }
 
         ModbusAddress modbusAddress = parseModbusAddress(address);
@@ -86,7 +86,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             case DISCRETE_INPUT -> readDiscreteInput(unitId,modbusAddress);
             case HOLDING_REGISTER -> readHoldingRegister(unitId,modbusAddress, point.getDataType());
             case INPUT_REGISTER -> readInputRegister(unitId,modbusAddress, point.getDataType());
-            default -> throw new IllegalArgumentException("涓嶆敮鎸佺殑瀵勫瓨鍣ㄧ被鍨? " + modbusAddress.getRegisterType());
+            default -> throw new IllegalArgumentException("不支持的寄存器类型: " + modbusAddress.getRegisterType());
         };
     }
 
@@ -122,7 +122,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                 }
 
             } catch (Exception e) {
-                log.error("ReadPlan 鎵ц澶辫触: unitId={}, type={}, addr={}",
+                log.error("ReadPlan 执行失败: unitId={}, type={}, addr={}",
                         plan.getUnitId(),
                         plan.getRegisterType(),
                         plan.getStartAddress(),
@@ -139,7 +139,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     }
 
     /**
-     * 鎵ц璁″垝
+     * 执行计划
      * @param plan
      * @return
      * @throws Exception
@@ -183,7 +183,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     }
 
     /**
-     * 杩斿洖缁撴灉
+     * 返回结果
      * @param response
      * @return
      */
@@ -216,7 +216,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     protected boolean doWritePoint(DataPoint point, Object value) throws Exception {
         String address = point.getAddress();
         if (address == null || address.isEmpty()) {
-            throw new IllegalArgumentException("鐐逛綅鍦板潃涓嶈兘涓虹┖");
+            throw new IllegalArgumentException("点位地址不能为空");
         }
 
         ModbusAddress modbusAddress = parseModbusAddress(address);
@@ -224,7 +224,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         return switch (modbusAddress.getRegisterType()) {
             case COIL -> writeCoil(unitId,modbusAddress, (Boolean) value);
             case HOLDING_REGISTER -> writeHoldingRegister(unitId,modbusAddress, value, point.getDataType());
-            default -> throw new IllegalArgumentException("璇ュ瘎瀛樺櫒绫诲瀷涓嶆敮鎸佸啓鍏? " + modbusAddress.getRegisterType());
+            default -> throw new IllegalArgumentException("该寄存器类型不支持写入: " + modbusAddress.getRegisterType());
         };
     }
 
@@ -253,7 +253,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                 grouped.computeIfAbsent(key, k -> new ArrayList<>())
                         .add(new WriteEntry(point, value, address.getAddress(), registerCount));
             } catch (Exception e) {
-                log.error("瑙ｆ瀽鍐欏叆鐐逛綅澶辫触: {}", point.getPointName(), e);
+                log.error("解析写入点位失败: {}", point.getPointName(), e);
                 results.put(point.getPointId(), false);
             }
         }
@@ -274,7 +274,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         status.put("port", port);
         status.put("unitIds", collectUnitIds());
 
-        // 娴嬭瘯杩炴帴
+        // 测试连接
         try {
             boolean connected = testConnection();
             status.put("deviceConnected", connected);
@@ -294,11 +294,11 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             case "READ_COILS" -> executeReadCoils(unitId,params);
             case "WRITE_COILS" -> executeWriteCoils(unitId,params);
             case "DIAGNOSTIC" -> executeDiagnostic(unitId,params);
-            default -> throw new IllegalArgumentException("涓嶆敮鎸佺殑Modbus鍛戒护: " + command);
+            default -> throw new IllegalArgumentException("不支持的Modbus命令: " + command);
         };
     }
 
-    // =============== Modbus鎿嶄綔瀹炵幇 ===============
+    // =============== Modbus操作实现 ===============
 
     private Boolean readCoil(int unitId,ModbusAddress address) throws Exception {
         return executeWithClient(client -> {
@@ -382,7 +382,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
-    // =============== 鍛戒护鎵ц鏂规硶 ===============
+    // =============== 命令执行方法 ===============
 
     private Object executeReadMultipleRegisters(int unitId,Map<String, Object> params) throws Exception {
         int address = (int) params.getOrDefault("address", 0);
@@ -422,7 +422,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         @SuppressWarnings("unchecked")
         List<Integer> values = (List<Integer>) params.get("values");
         if (values == null || values.isEmpty()) {
-            throw new IllegalArgumentException("values鍙傛暟涓嶈兘涓虹┖");
+            throw new IllegalArgumentException("values参数不能为空");
         }
 
         WriteMultipleRegistersRequest request = ModbusRequestBuilder.buildWriteMultipleRegisters(address, values);
@@ -465,7 +465,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         @SuppressWarnings("unchecked")
         List<Boolean> values = (List<Boolean>) params.get("values");
         if (values == null || values.isEmpty()) {
-            throw new IllegalArgumentException("values鍙傛暟涓嶈兘涓虹┖");
+            throw new IllegalArgumentException("values参数不能为空");
         }
 
         byte[] coilBytes = ModbusUtils.buildCoilBytes(values);
@@ -514,7 +514,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             });
             return true;
         } catch (Exception e) {
-            log.warn("杩炴帴娴嬭瘯澶辫触", e);
+            log.warn("连接测试失败", e);
             return false;
         }
     }
@@ -548,7 +548,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             try {
                 return Integer.parseInt(str);
             } catch (NumberFormatException e) {
-                log.warn("鏃犳硶瑙ｆ瀽璁惧 {} 鐨?slaveId: {}", deviceInfo.getDeviceId(), str);
+                log.warn("无法解析设备 {} 的 slaveId: {}", deviceInfo.getDeviceId(), str);
             }
         }
         return null;
@@ -622,7 +622,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                 boolean single = doWritePoint(entry.point(), entry.value());
                 results.put(entry.point().getPointId(), single);
             } catch (Exception e) {
-                log.error("鍗曠偣鍐欏叆澶辫触: {}", entry.point().getPointName(), e);
+                log.error("单点写入失败: {}", entry.point().getPointName(), e);
                 results.put(entry.point().getPointId(), false);
             }
         }
@@ -643,7 +643,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                 return response != null;
             });
         } catch (Exception e) {
-            log.error("鎵归噺鍐欑嚎鍦堝け璐? unitId={}, startAddress={}", unitId, startAddress, e);
+            log.error("批量写线圈失败: unitId={}, startAddress={}", unitId, startAddress, e);
             return false;
         }
     }
@@ -662,7 +662,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                 return response != null;
             });
         } catch (Exception e) {
-            log.error("鎵归噺鍐欎繚鎸佸瘎瀛樺櫒澶辫触: unitId={}, startAddress={}", unitId, startAddress, e);
+            log.error("批量写保持寄存器失败: unitId={}, startAddress={}", unitId, startAddress, e);
             return false;
         } finally {
             ReferenceCountUtil.release(request);
@@ -779,7 +779,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         if (value instanceof String str) {
             return Boolean.parseBoolean(str);
         }
-        throw new IllegalArgumentException("鏃犳硶杞崲涓哄竷灏斿€? " + value);
+        throw new IllegalArgumentException("无法转换为布尔值:" + value);
     }
 
     private record BatchKey(int unitId, RegisterType registerType) {
