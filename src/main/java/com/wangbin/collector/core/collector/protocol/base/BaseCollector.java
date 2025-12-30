@@ -10,6 +10,7 @@ import com.wangbin.collector.core.connection.manager.ConnectionManager;
 import com.wangbin.collector.core.processor.DataQualityProcessor;
 import com.wangbin.collector.core.processor.ProcessContext;
 import com.wangbin.collector.core.processor.ProcessResult;
+import com.wangbin.collector.monitor.metrics.ExceptionMonitorService;
 
 import lombok.Getter;
 import lombok.Setter;
@@ -39,6 +40,9 @@ public abstract class BaseCollector implements ProtocolCollector {
     @Autowired
     protected DataQualityProcessor dataQualityProcessor;
 
+    @Autowired(required = false)
+    protected ExceptionMonitorService exceptionMonitorService;
+
     protected boolean connected = false;
     protected String connectionStatus = "DISCONNECTED";
     protected String lastError;
@@ -54,6 +58,9 @@ public abstract class BaseCollector implements ProtocolCollector {
     protected AtomicLong totalBytesWrite = new AtomicLong(0);
     protected AtomicLong totalReadTime = new AtomicLong(0);
     protected AtomicLong totalWriteTime = new AtomicLong(0);
+
+    // æè¿ä¸æ¬¡å¤çç»æ?
+    protected final Map<String, ProcessResult> lastProcessResults = new ConcurrentHashMap<>();
 
     // 订阅的点位
     protected final Set<String> subscribedPointsSet = ConcurrentHashMap.newKeySet();
@@ -81,7 +88,7 @@ public abstract class BaseCollector implements ProtocolCollector {
         }
 
         try {
-            log.info("开始连接设备: {}", deviceInfo.getDeviceId());
+            log.info("开始连接设备:  {}", deviceInfo.getDeviceId());
             connectionStatus = "CONNECTING";
 
             // 执行实际连接逻辑
@@ -99,6 +106,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             lastError = e.getMessage();
             totalErrorCount.incrementAndGet();
             log.error("设备连接失败: {}", deviceInfo.getDeviceId(), e);
+            recordException(e, null);
             throw new CollectorException("设备连接失败", deviceInfo.getDeviceId(), null, DataQuality.DEVICE_ERROR);
         }
     }
@@ -129,55 +137,52 @@ public abstract class BaseCollector implements ProtocolCollector {
             lastError = e.getMessage();
             totalErrorCount.incrementAndGet();
             log.error("设备断开失败: {}", deviceInfo.getDeviceId(), e);
+            recordException(e, null);
             throw new CollectorException("设备断开失败", deviceInfo.getDeviceId(), null, DataQuality.DEVICE_ERROR);
         }
     }
-
     @Override
     public Object readPoint(DataPoint point) throws CollectorException {
         checkConnection();
 
         long startTime = System.currentTimeMillis();
         try {
-            log.debug("读取点位: {}.{}", deviceInfo.getDeviceId(), point.getPointName());
+            log.debug("Read point {}.{}", deviceInfo.getDeviceId(), point.getPointName());
 
-            // 执行实际读取逻辑
             Object rawValue = doReadPoint(point);
-
-            // 数据转换
             Object processedValue = convertData(point, rawValue);
 
-            // 数据质量检查（替代原有的validateData方法）
             ProcessContext context = new ProcessContext();
             context.addAttribute("deviceId", deviceInfo.getDeviceId());
             ProcessResult processResult = dataQualityProcessor.process(context, point, processedValue);
+            lastProcessResults.put(point.getPointId(), processResult);
 
-            // 如果处理失败，不缓存数据
             if (!processResult.isSuccess()) {
-                log.warn("数据质量检查失败，不缓存数据: {}.{}, 原因: {}",
+                log.warn("Data quality check failed {}.{}, reason: {}",
                         deviceInfo.getDeviceId(), point.getPointName(), processResult.getMessage());
-                // 这里不抛出异常，继续返回数据，但标记为无效
             }
 
-            // 更新统计
             totalReadCount.incrementAndGet();
             totalReadTime.addAndGet(System.currentTimeMillis() - startTime);
             lastActivityTime = System.currentTimeMillis();
 
-            log.debug("点位读取成功: {}.{} = {}",
-                    deviceInfo.getDeviceId(), point.getPointName(), processedValue);
+            Object finalValue = processResult.getFinalValue();
+            log.debug("Point read success {}.{} = {}",
+                    deviceInfo.getDeviceId(), point.getPointName(), finalValue);
 
-            return processedValue;
+            return finalValue;
         } catch (Exception e) {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();
-            log.error("点位读取失败: {}.{}", deviceInfo.getDeviceId(), point.getPointName(), e);
+            log.error("Point read failed {}.{}", deviceInfo.getDeviceId(), point.getPointName(), e);
+            recordException(e, point);
             throw new CollectorException("点位读取失败", deviceInfo.getDeviceId(),
                     point.getPointId(), DataQuality.DEVICE_ERROR);
         }
     }
 
-    @Override
+
+@Override
     public Map<String, Object> readPoints(List<DataPoint> points) throws CollectorException {
         checkConnection();
 
@@ -185,7 +190,7 @@ public abstract class BaseCollector implements ProtocolCollector {
         Map<String, Object> results = new HashMap<>();
 
         try {
-            log.debug("批量读取点位: {}, 数量: {}", deviceInfo.getDeviceId(), points.size());
+            log.debug("Batch read points: {}, size: {}", deviceInfo.getDeviceId(), points.size());
 
             // 1. 提前过滤：移除无效的数据点
             List<DataPoint> validPoints = points.stream()
@@ -203,7 +208,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             // 3. 并行处理数据转换和质量检查
             Map<String, Object> processedValues = validPoints.parallelStream()
                     .collect(Collectors.toConcurrentMap(
-                            DataPoint::getPointId, 
+                            DataPoint::getPointId,
                             point -> {
                                 try {
                                     String pointId = point.getPointId();
@@ -220,16 +225,18 @@ public abstract class BaseCollector implements ProtocolCollector {
                                     ProcessContext context = new ProcessContext();
                                     context.addAttribute("deviceId", deviceInfo.getDeviceId());
                                     ProcessResult processResult = dataQualityProcessor.process(context, point, processedValue);
+                                    lastProcessResults.put(pointId, processResult);
 
                                     // 如果处理失败，不缓存数据（在AOP中会检查）
                                     if (!processResult.isSuccess()) {
-                                        log.warn("数据质量检查失败，不缓存数据: {}.{}, 原因: {}",
+                                        log.warn("Data quality check failed {}.{}, reason: {}",
                                                 deviceInfo.getDeviceId(), point.getPointName(), processResult.getMessage());
                                     }
 
-                                    return processedValue;
+                                    return processResult.getFinalValue();
                                 } catch (Exception e) {
                                     log.error("处理点位数据失败: {}.{}", deviceInfo.getDeviceId(), point.getPointName(), e);
+                                    recordException(e, point);
                                     return null;
                                 }
                             }
@@ -237,24 +244,25 @@ public abstract class BaseCollector implements ProtocolCollector {
 
             results.putAll(processedValues);
 
-            // 更新统计
             totalReadCount.addAndGet(validPoints.size());
             totalReadTime.addAndGet(System.currentTimeMillis() - startTime);
             lastActivityTime = System.currentTimeMillis();
 
-            log.debug("批量点位读取成功: {}, 数量: {}, 值：{}", deviceInfo.getDeviceId(), validPoints.size(), new ObjectMapper().writeValueAsString(rawValues));
+            log.debug("批量点位读取成功: {}, 数量: {}, 值：{}", deviceInfo.getDeviceId(), validPoints.size());
 
             return results;
         } catch (Exception e) {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();
             log.error("批量点位读取失败: {}", deviceInfo.getDeviceId(), e);
+            recordException(e, null);
             throw new CollectorException("批量点位读取失败", deviceInfo.getDeviceId(),
                     null, DataQuality.DEVICE_ERROR);
         }
     }
 
-    @Override
+
+@Override
     public boolean writePoint(DataPoint point, Object value) throws CollectorException {
         checkConnection();
 
@@ -297,6 +305,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();
             log.error("点位写入失败: {}.{}", deviceInfo.getDeviceId(), point.getPointName(), e);
+            recordException(e, point);
             throw new CollectorException("点位写入失败", deviceInfo.getDeviceId(),
                     point.getPointId(), DataQuality.DEVICE_ERROR);
         }
@@ -360,6 +369,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();
             log.error("批量点位写入失败: {}", deviceInfo.getDeviceId(), e);
+            recordException(e, null);
             throw new CollectorException("批量点位写入失败", deviceInfo.getDeviceId(),
                     null, DataQuality.DEVICE_ERROR);
         }
@@ -386,6 +396,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();
             log.error("点位订阅失败: {}", deviceInfo.getDeviceId(), e);
+            recordException(e, null);
             throw new CollectorException("点位订阅失败", deviceInfo.getDeviceId(),
                     null, DataQuality.DEVICE_ERROR);
         }
@@ -427,6 +438,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();
             log.error("点位取消订阅失败: {}", deviceInfo.getDeviceId(), e);
+            recordException(e, null);
             throw new CollectorException("点位取消订阅失败", deviceInfo.getDeviceId(),
                     null, DataQuality.DEVICE_ERROR);
         }
@@ -455,7 +467,7 @@ public abstract class BaseCollector implements ProtocolCollector {
 
             return status;
         } catch (Exception e) {
-            log.error("获取设备状态失败: {}", deviceInfo.getDeviceId(), e);
+            log.error("获取设备状态失败 {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("获取设备状态失败", deviceInfo.getDeviceId(),
                     null, DataQuality.DEVICE_ERROR);
         }
@@ -481,6 +493,7 @@ public abstract class BaseCollector implements ProtocolCollector {
             totalErrorCount.incrementAndGet();
             lastError = e.getMessage();
             log.error("设备命令执行失败: {}, 命令: {}", deviceInfo.getDeviceId(), command, e);
+            recordException(e, null);
             throw new CollectorException("设备命令执行失败", deviceInfo.getDeviceId(),
                     null, DataQuality.DEVICE_ERROR);
         }
@@ -575,7 +588,7 @@ public abstract class BaseCollector implements ProtocolCollector {
      */
     protected void checkConnection() {
         if (!isConnected()) {
-            throw new IllegalStateException("设备未连接: " + deviceInfo.getDeviceId());
+            throw new IllegalStateException("设备未连接 " + deviceInfo.getDeviceId());
         }
     }
 
@@ -725,5 +738,21 @@ public abstract class BaseCollector implements ProtocolCollector {
             }
             return value;
         }
+    }
+    
+    public ProcessResult getLatestProcessResult(String pointId) {
+        return pointId == null ? null : lastProcessResults.get(pointId);
+    }
+
+    /**
+     * Hook for exception monitoring.
+     */
+    protected void recordException(Throwable throwable, DataPoint point) {
+        if (exceptionMonitorService == null) {
+            return;
+        }
+        String deviceId = deviceInfo != null ? deviceInfo.getDeviceId() : null;
+        String pointId = point != null ? point.getPointId() : null;
+        exceptionMonitorService.record(throwable, deviceId, pointId);
     }
 }

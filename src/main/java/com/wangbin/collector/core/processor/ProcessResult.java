@@ -3,6 +3,7 @@ package com.wangbin.collector.core.processor;
 import com.wangbin.collector.common.domain.enums.DataQuality;
 import lombok.Data;
 
+import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -10,7 +11,9 @@ import java.util.Map;
  * 数据处理结果
  */
 @Data
-public class ProcessResult {
+public class ProcessResult implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     // 处理状态
     private boolean success;

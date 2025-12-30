@@ -3,6 +3,8 @@ package com.wangbin.collector.core.cache.aspect;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.core.cache.manager.MultiLevelCacheManager;
 import com.wangbin.collector.core.cache.model.CacheKey;
+import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
+import com.wangbin.collector.core.processor.ProcessResult;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.AfterReturning;
@@ -61,7 +63,13 @@ public class CollectorDataCacheAspect {
                 return;
             }
 
-            asyncSaveToCache(deviceId, point, result);
+            BaseCollector collector = joinPoint.getTarget() instanceof BaseCollector
+                    ? (BaseCollector) joinPoint.getTarget() : null;
+            ProcessResult processResult = collector != null
+                    ? collector.getLatestProcessResult(point.getPointId()) : null;
+            Object cacheValue = processResult != null ? processResult : result;
+
+            asyncSaveToCache(deviceId, point, cacheValue);
         } catch (Exception e) {
             log.error("准备异步缓存数据失败", e);
         }
@@ -91,7 +99,10 @@ public class CollectorDataCacheAspect {
                 return;
             }
 
-            asyncBatchSaveToCache(deviceId, points, result);
+            BaseCollector collector = joinPoint.getTarget() instanceof BaseCollector
+                    ? (BaseCollector) joinPoint.getTarget() : null;
+
+            asyncBatchSaveToCache(deviceId, points, result, collector);
         } catch (Exception e) {
             log.error("准备批量异步缓存数据失败", e);
         }
@@ -101,7 +112,7 @@ public class CollectorDataCacheAspect {
      * 异步保存到缓存
      */
     @Async("cacheAsyncExecutor")
-    protected <T> void asyncSaveToCache(String deviceId, DataPoint point, T value) {
+    protected void asyncSaveToCache(String deviceId, DataPoint point, Object value) {
         try {
             // 1. 选择性缓存：检查是否需要缓存
             if (!shouldCache(point) || value == null) {
@@ -128,18 +139,22 @@ public class CollectorDataCacheAspect {
      * 异步批量保存到缓存
      */
     @Async("cacheAsyncExecutor")
-    protected <T> void asyncBatchSaveToCache(String deviceId, List<DataPoint> points, Map<String, T> values) {
+    protected void asyncBatchSaveToCache(String deviceId, List<DataPoint> points, Map<String, Object> values,
+                                          BaseCollector collector) {
         try {
             // 1. 构建批量缓存数据（只缓存需要的数据）
             for (DataPoint point : points) {
                 String pointId = point.getPointId();
-                T value = values.get(pointId);
+                Object value = values.get(pointId);
                 
                 // 条件处理：只缓存非null值且需要缓存的数据
                 if (value != null && shouldCache(point)) {
+                    ProcessResult processResult = collector != null
+                            ? collector.getLatestProcessResult(pointId) : null;
+                    Object cacheValue = processResult != null ? processResult : value;
                     CacheKey cacheKey = CacheKey.dataKey(deviceId, pointId);
                     long expireTime = getCacheExpireTime(point);
-                    multiLevelCacheManager.put(cacheKey, value, expireTime);
+                    multiLevelCacheManager.put(cacheKey, cacheValue, expireTime);
                 }
             }
             

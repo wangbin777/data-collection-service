@@ -4,6 +4,7 @@ import com.wangbin.collector.core.cache.manager.MultiLevelCacheManager;
 import com.wangbin.collector.core.cache.model.CacheKey;
 import com.wangbin.collector.core.config.manager.ConfigManager;
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.core.processor.ProcessResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -59,7 +60,7 @@ public class DataController {
                 result.put("pointName", dataPoint.getPointName());
                 result.put("pointCode", dataPoint.getPointCode());
                 result.put("dataType", dataPoint.getDataType());
-                result.put("value", value);
+                enrichWithCachedPayload(result, value);
                 result.put("timestamp", System.currentTimeMillis());
                 result.put("status", "success");
             } else {
@@ -120,7 +121,7 @@ public class DataController {
                 pointData.put("pointName", point.getPointName());
                 pointData.put("pointCode", point.getPointCode());
                 pointData.put("dataType", point.getDataType());
-                pointData.put("value", value);
+                enrichWithCachedPayload(pointData, value);
                 
                 dataMap.put(point.getPointId(), pointData);
             }
@@ -215,5 +216,31 @@ public class DataController {
         }
         
         return result;
+    }
+
+    /**
+     * 将缓存中的ProcessResult或普通值展开为响应字段。
+     */
+    private void enrichWithCachedPayload(Map<String, Object> target, Object cachedValue) {
+        if (cachedValue instanceof ProcessResult processResult) {
+            Object finalValue = processResult.getFinalValue();
+            target.put("value", finalValue);
+            target.put("rawValue", processResult.getRawValue());
+            target.put("processedValue", processResult.getProcessedValue());
+            target.put("quality", processResult.getQuality());
+            target.put("qualityDescription", processResult.getQualityDescription());
+            target.put("qualityLevel", processResult.getQualityLevel());
+            target.put("qualityAcceptable", processResult.isQualityAcceptable());
+            target.put("processMessage", processResult.getMessage());
+            target.put("processSuccess", processResult.isSuccess());
+            target.put("skipped", processResult.isSkipped());
+            target.put("processorName", processResult.getProcessorName());
+            target.put("processingTime", processResult.getProcessingTime());
+            Map<String, Object> metadata = processResult.getMetadata();
+            target.put("metadata", metadata != null ? new HashMap<>(metadata) : new HashMap<>());
+        } else {
+            target.put("value", cachedValue);
+            target.put("rawValue", cachedValue);
+        }
     }
 }

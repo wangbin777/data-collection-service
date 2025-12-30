@@ -35,7 +35,8 @@ public class MultiLevelCacheManager implements CacheManager {
     private final List<CacheManager> cacheManagers = new CopyOnWriteArrayList<>();
 
     // 配置
-    private boolean enabled = true;
+    private volatile boolean enabled = true;
+    private volatile boolean shuttingDown = false;
     private boolean writeThrough = true; // 写穿透
     private boolean readThrough = true;  // 读穿透
     private boolean cacheAside = true;   // 旁路缓存
@@ -57,7 +58,8 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @PostConstruct
     public void init() {
-        if (!enabled) {
+        shuttingDown = false;
+        if (!isOperational()) {
             log.warn("多级缓存管理器已禁用");
             return;
         }
@@ -96,7 +98,10 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @PreDestroy
     public void destroy() {
-        if (!enabled) {
+        shuttingDown = true;
+        boolean wasEnabled = enabled;
+        enabled = false;
+        if (!wasEnabled) {
             return;
         }
 
@@ -127,7 +132,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public <T> boolean put(CacheKey key, T value, long expireTime) {
-        if (!enabled || key == null || value == null) {
+        if (!isOperational() || key == null || value == null) {
             return false;
         }
 
@@ -192,7 +197,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public <T> boolean putAll(Map<CacheKey, T> dataMap) {
-        if (!enabled || dataMap == null || dataMap.isEmpty()) {
+        if (!isOperational() || dataMap == null || dataMap.isEmpty()) {
             return true;
         }
 
@@ -232,7 +237,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public <T> T get(CacheKey key, Class<T> type) {
-        if (!enabled || key == null) {
+        if (!isOperational() || key == null) {
             return null;
         }
 
@@ -309,7 +314,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public <T> Map<CacheKey, T> getAll(List<CacheKey> keys) {
-        if (!enabled || keys == null || keys.isEmpty()) {
+        if (!isOperational() || keys == null || keys.isEmpty()) {
             return Collections.emptyMap();
         }
 
@@ -326,7 +331,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public <T> List<CacheData<T>> getListWithMetadata(List<CacheKey> keys) {
-        if (!enabled || keys == null || keys.isEmpty()) {
+        if (!isOperational() || keys == null || keys.isEmpty()) {
             return Collections.emptyList();
         }
 
@@ -343,7 +348,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public boolean delete(CacheKey key) {
-        if (!enabled || key == null) {
+        if (!isOperational() || key == null) {
             return false;
         }
 
@@ -374,7 +379,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public boolean deleteAll(List<CacheKey> keys) {
-        if (!enabled || keys == null || keys.isEmpty()) {
+        if (!isOperational() || keys == null || keys.isEmpty()) {
             return false;
         }
 
@@ -392,7 +397,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public boolean deleteByPattern(String pattern) {
-        if (!enabled || pattern == null || pattern.isEmpty()) {
+        if (!isOperational() || pattern == null || pattern.isEmpty()) {
             return false;
         }
 
@@ -411,7 +416,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public boolean exists(CacheKey key) {
-        if (!enabled || key == null) {
+        if (!isOperational() || key == null) {
             return false;
         }
 
@@ -427,7 +432,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public boolean expire(CacheKey key, long expireTime) {
-        if (!enabled || key == null || expireTime <= 0) {
+        if (!isOperational() || key == null || expireTime <= 0) {
             return false;
         }
 
@@ -446,7 +451,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public long getExpire(CacheKey key) {
-        if (!enabled || key == null) {
+        if (!isOperational() || key == null) {
             return -1;
         }
 
@@ -463,7 +468,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public void clear() {
-        if (!enabled) {
+        if (!isOperational()) {
             return;
         }
 
@@ -479,7 +484,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public long size() {
-        if (!enabled) {
+        if (!isOperational()) {
             return 0;
         }
 
@@ -490,7 +495,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public Set<CacheKey> keys() {
-        if (!enabled) {
+        if (!isOperational()) {
             return Collections.emptySet();
         }
 
@@ -501,7 +506,7 @@ public class MultiLevelCacheManager implements CacheManager {
 
     @Override
     public Set<CacheKey> keys(String pattern) {
-        if (!enabled) {
+        if (!isOperational()) {
             return Collections.emptySet();
         }
 
@@ -681,7 +686,7 @@ public class MultiLevelCacheManager implements CacheManager {
      * 预热缓存
      */
     public <T> void warmUp(CacheKey key, T value) {
-        if (!enabled || key == null || value == null) {
+        if (!isOperational() || key == null || value == null) {
             return;
         }
 
@@ -705,7 +710,7 @@ public class MultiLevelCacheManager implements CacheManager {
      * 批量预热缓存
      */
     public <T> void warmUpAll(Map<CacheKey, T> dataMap) {
-        if (!enabled || dataMap == null || dataMap.isEmpty()) {
+        if (!isOperational() || dataMap == null || dataMap.isEmpty()) {
             return;
         }
 
@@ -728,7 +733,7 @@ public class MultiLevelCacheManager implements CacheManager {
      * 刷新缓存
      */
     public <T> boolean refresh(CacheKey key, T newValue) {
-        if (!enabled || key == null) {
+        if (!isOperational() || key == null) {
             return false;
         }
 
@@ -856,5 +861,9 @@ public class MultiLevelCacheManager implements CacheManager {
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
         log.info("缓存管理器已{}", enabled ? "启用" : "禁用");
+    }
+
+    private boolean isOperational() {
+        return enabled && !shuttingDown;
     }
 }

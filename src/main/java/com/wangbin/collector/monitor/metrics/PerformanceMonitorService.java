@@ -26,13 +26,29 @@ public class PerformanceMonitorService {
                 continue;
             }
             Map<String, Object> stats = collector.getStatistics();
+            long processed = longValue(stats, "totalReadCount");
+            long errors = longValue(stats, "totalErrorCount");
+            long totalReadTime = longValue(stats, "totalReadTime");
+            long connectionDuration = longValue(stats, "connectionDuration");
+
+            double pointsPerSecond = connectionDuration > 0
+                    ? processed / Math.max(1d, connectionDuration / 1000d)
+                    : processed;
+            long totalOperations = processed + errors;
+            double successRate = totalOperations > 0
+                    ? (double) processed * 100.0 / totalOperations
+                    : 100.0;
+            double averageLatency = processed > 0
+                    ? (double) totalReadTime / processed
+                    : 0.0;
+
             result.add(CollectorMetrics.builder()
                     .deviceId(deviceId)
                     .protocol(collector.getProtocolType())
-                    .processedPoints(longValue(stats, "totalReadCount"))
-                    .pointsPerSecond(doubleValue(stats, "pointsPerSecond"))
-                    .successRate(doubleValue(stats, "successRate"))
-                    .averageLatencyMs(doubleValue(stats, "averageReadTime"))
+                    .processedPoints(processed)
+                    .pointsPerSecond(pointsPerSecond)
+                    .successRate(successRate)
+                    .averageLatencyMs(averageLatency)
                     .build());
         }
         return result;
@@ -52,17 +68,4 @@ public class PerformanceMonitorService {
         return 0L;
     }
 
-    private double doubleValue(Map<String, Object> stats, String key) {
-        Object value = stats.get(key);
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (value instanceof String text && !text.isEmpty()) {
-            try {
-                return Double.parseDouble(text);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return 0.0;
-    }
 }

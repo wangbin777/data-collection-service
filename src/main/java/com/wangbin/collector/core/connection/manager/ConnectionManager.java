@@ -6,6 +6,7 @@ import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import com.wangbin.collector.core.connection.factory.ConnectionFactory;
 import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import com.wangbin.collector.core.connection.model.ConnectionMetrics;
+import com.wangbin.collector.monitor.metrics.ExceptionMonitorService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,9 @@ public class ConnectionManager {
 
     @Autowired
     private ConnectionFactory connectionFactory;
+
+    @Autowired(required = false)
+    private ExceptionMonitorService exceptionMonitorService;
 
     // 连接存储：deviceId -> ConnectionAdapter
     private final Map<String, ConnectionAdapter> connections = new ConcurrentHashMap<>();
@@ -91,6 +95,7 @@ public class ConnectionManager {
                 return connection;
             } catch (Exception e) {
                 log.error("创建连接失败: {}", deviceId, e);
+                recordException(deviceId, e);
                 throw new CollectorException("创建连接失败", deviceId, null);
             }
         }
@@ -112,6 +117,7 @@ public class ConnectionManager {
         } catch (Exception e) {
             log.error("连接建立失败: {}", deviceId, e);
             notifyConnectionError(connection, e);
+            recordException(deviceId, e);
             throw new CollectorException("连接建立失败", deviceId, null);
         }
     }
@@ -132,6 +138,7 @@ public class ConnectionManager {
         } catch (Exception e) {
             log.error("连接断开失败: {}", deviceId, e);
             notifyConnectionError(connection, e);
+            recordException(deviceId, e);
             throw new CollectorException("连接断开失败", deviceId, null);
         }
     }
@@ -152,6 +159,7 @@ public class ConnectionManager {
         } catch (Exception e) {
             log.error("重新连接失败: {}", deviceId, e);
             notifyConnectionError(connection, e);
+            recordException(deviceId, e);
             throw new CollectorException("重新连接失败", deviceId, null);
         }
     }
@@ -171,6 +179,7 @@ public class ConnectionManager {
         } catch (Exception e) {
             log.error("数据发送失败: {}", deviceId, e);
             notifyConnectionError(connection, e);
+            recordException(deviceId, e);
             throw new CollectorException("数据发送失败", deviceId, null);
         }
     }
@@ -189,6 +198,7 @@ public class ConnectionManager {
         } catch (Exception e) {
             log.error("数据接收失败: {}", deviceId, e);
             notifyConnectionError(connection, e);
+            recordException(deviceId, e);
             throw new CollectorException("数据接收失败", deviceId, null);
         }
     }
@@ -342,6 +352,7 @@ public class ConnectionManager {
         } catch (Exception e) {
             log.error("心跳检查失败: {}", connection.getDeviceId(), e);
             notifyConnectionError(connection, e);
+            recordException(connection.getDeviceId(), e);
         }
     }
 
@@ -495,6 +506,12 @@ public class ConnectionManager {
             } catch (Exception e) {
                 log.error("连接移除事件处理失败", e);
             }
+        }
+    }
+
+    private void recordException(String deviceId, Exception e) {
+        if (exceptionMonitorService != null) {
+            exceptionMonitorService.record(e, deviceId, null);
         }
     }
 
