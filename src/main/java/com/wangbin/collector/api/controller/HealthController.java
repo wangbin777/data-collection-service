@@ -1,20 +1,22 @@
 package com.wangbin.collector.api.controller;
 
-import lombok.extern.slf4j.Slf4j;
+import com.wangbin.collector.monitor.health.HealthStatus;
+import com.wangbin.collector.monitor.health.SystemHealthService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Slf4j
+/**
+ * 系统健康检查接口。
+ */
 @RestController
+@RequiredArgsConstructor
 public class HealthController {
 
+    private final SystemHealthService systemHealthService;
 
-    /**
-     * 健康检查
-     * @return
-     */
     @GetMapping("/health")
-    public String health() {
-       return "OK";
+    public HealthStatus health() {
+        return systemHealthService.getSystemHealth();
     }
 }
