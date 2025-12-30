@@ -10,12 +10,14 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 
 /**
@@ -31,14 +33,18 @@ public class ConnectionManager {
     // 连接存储：deviceId -> ConnectionAdapter
     private final Map<String, ConnectionAdapter> connections = new ConcurrentHashMap<>();
 
-    // 连接分组：groupId -> List<deviceId>
-    private final Map<String, List<String>> groupConnections = new ConcurrentHashMap<>();
+    // 连接分组：groupId -> Set<deviceId>
+    private final Map<String, Set<String>> groupConnections = new ConcurrentHashMap<>();
 
     // 连接状态监听器
     private final List<ConnectionStateListener> stateListeners = new CopyOnWriteArrayList<>();
 
     // 连接事件处理器
     private final List<ConnectionEventHandler> eventHandlers = new CopyOnWriteArrayList<>();
+
+    @Autowired
+    @Qualifier("monitorExecutor")
+    private ScheduledExecutorService monitorExecutor;
 
     @PostConstruct
     public void init() {
@@ -70,12 +76,13 @@ public class ConnectionManager {
             }
 
             try {
+                validateGroupCapacity(config);
                 // 创建新连接
                 ConnectionAdapter connection = connectionFactory.createConnection(config);
                 connections.put(deviceId, connection);
 
                 // 添加到分组
-                addToGroup(deviceId, deviceId);
+                addToGroup(config, deviceId);
 
                 // 通知连接创建
                 notifyConnectionCreated(connection);
@@ -213,8 +220,8 @@ public class ConnectionManager {
      * 获取分组连接
      */
     public List<ConnectionAdapter> getGroupConnections(String groupId) {
-        List<String> deviceIds = groupConnections.get(groupId);
-        if (deviceIds == null) {
+        Set<String> deviceIds = groupConnections.get(groupId);
+        if (deviceIds == null || deviceIds.isEmpty()) {
             return Collections.emptyList();
         }
 
@@ -287,8 +294,8 @@ public class ConnectionManager {
      * 关闭分组连接
      */
     public void closeGroupConnections(String groupId) {
-        List<ConnectionAdapter> groupConnections = getGroupConnections(groupId);
-        for (ConnectionAdapter connection : groupConnections) {
+        List<ConnectionAdapter> groupedConnections = getGroupConnections(groupId);
+        for (ConnectionAdapter connection : groupedConnections) {
             try {
                 removeConnection(connection.getDeviceId());
             } catch (Exception e) {
@@ -305,30 +312,49 @@ public class ConnectionManager {
         log.debug("开始心跳检查...");
 
         for (ConnectionAdapter connection : connections.values()) {
-            if (connection.isConnected()) {
-                try {
-                    // 检查心跳超时
-                    ConnectionMetrics metrics = connection.getMetrics();
-                    long heartbeatInterval = connection.getConfig().getHeartbeatInterval();
+            if (!connection.isConnected()) {
+                continue;
+            }
 
-                    if (metrics.isTimeout(heartbeatInterval)) {
-                        log.warn("连接心跳超时: {}", connection.getDeviceId());
-                        notifyHeartbeatTimeout(connection);
-
-                        // 如果配置了自动重连，则尝试重连
-                        if (connection.getConfig().isAutoReconnect()) {
-                            reconnect(connection.getDeviceId());
-                        }
-                    } else {
-                        // 发送心跳
-                        connection.heartbeat();
-                    }
-                } catch (Exception e) {
-                    log.error("心跳检查失败: {}", connection.getDeviceId(), e);
-                    notifyConnectionError(connection, e);
-                }
+            if (monitorExecutor != null) {
+                monitorExecutor.submit(() -> handleHeartbeat(connection));
+            } else {
+                handleHeartbeat(connection);
             }
         }
+    }
+
+    private void handleHeartbeat(ConnectionAdapter connection) {
+        try {
+            ConnectionMetrics metrics = connection.getMetrics();
+            long timeoutThreshold = resolveHeartbeatTimeout(connection);
+
+            if (metrics != null && metrics.isTimeout(timeoutThreshold)) {
+                log.warn("连接心跳超时: {}", connection.getDeviceId());
+                notifyHeartbeatTimeout(connection);
+
+                if (connection.getConfig().isAutoReconnect()) {
+                    reconnect(connection.getDeviceId());
+                }
+            } else {
+                connection.heartbeat();
+            }
+        } catch (Exception e) {
+            log.error("心跳检查失败: {}", connection.getDeviceId(), e);
+            notifyConnectionError(connection, e);
+        }
+    }
+
+    private long resolveHeartbeatTimeout(ConnectionAdapter connection) {
+        ConnectionConfig config = connection.getConfig();
+        long interval = Optional.ofNullable(config.getHeartbeatInterval())
+                .map(Integer::longValue)
+                .filter(value -> value > 0)
+                .orElse(30_000L);
+        return Optional.ofNullable(config.getHeartbeatTimeout())
+                .map(Integer::longValue)
+                .filter(value -> value > 0)
+                .orElse(interval * 3);
     }
 
     /**
@@ -362,9 +388,28 @@ public class ConnectionManager {
     /**
      * 添加到分组
      */
-    private void addToGroup(String groupId, String deviceId) {
-        if (groupId != null && !groupId.isEmpty()) {
-            groupConnections.computeIfAbsent(groupId, k -> new ArrayList<>()).add(deviceId);
+    private void addToGroup(ConnectionConfig config, String deviceId) {
+        String groupId = config.getGroupId();
+        if (groupId == null || groupId.isEmpty()) {
+            return;
+        }
+        groupConnections
+                .computeIfAbsent(groupId, key -> ConcurrentHashMap.newKeySet())
+                .add(deviceId);
+    }
+
+    private void validateGroupCapacity(ConnectionConfig config) {
+        String groupId = config.getGroupId();
+        if (groupId == null || groupId.isEmpty()) {
+            return;
+        }
+        int maxConnections = Optional.ofNullable(config.getMaxGroupConnections()).orElse(0);
+        if (maxConnections <= 0) {
+            return;
+        }
+        Set<String> members = groupConnections.get(groupId);
+        if (members != null && members.size() >= maxConnections) {
+            throw new CollectorException("分组连接数已达到限制", config.getDeviceId(), null);
         }
     }
 
@@ -372,12 +417,12 @@ public class ConnectionManager {
      * 从分组中移除
      */
     private void removeFromGroup(String deviceId) {
-        groupConnections.forEach((groupId, deviceIds) -> {
-            deviceIds.remove(deviceId);
-            if (deviceIds.isEmpty()) {
-                groupConnections.remove(groupId);
+        for (Map.Entry<String, Set<String>> entry : groupConnections.entrySet()) {
+            Set<String> deviceIds = entry.getValue();
+            if (deviceIds.remove(deviceId) && deviceIds.isEmpty()) {
+                groupConnections.remove(entry.getKey(), deviceIds);
             }
-        });
+        }
     }
 
     /**

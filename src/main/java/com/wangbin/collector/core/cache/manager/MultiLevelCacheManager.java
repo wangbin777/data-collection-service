@@ -142,9 +142,10 @@ public class MultiLevelCacheManager implements CacheManager {
 
         totalWrites.incrementAndGet();
         String lockKey = key.getFullKey();
+        Object lock = getCacheLock(lockKey);
 
-        synchronized (getCacheLock(lockKey)) {
-            try {
+        try {
+            synchronized (lock) {
                 boolean allSuccess = true;
 
                 // 根据策略写入各级缓存
@@ -183,9 +184,9 @@ public class MultiLevelCacheManager implements CacheManager {
                         key, cacheManagers.size(), allSuccess);
 
                 return allSuccess;
-            } finally {
-                releaseCacheLock(lockKey);
             }
+        } finally {
+            releaseCacheLock(lockKey, lock);
         }
     }
 
@@ -237,9 +238,10 @@ public class MultiLevelCacheManager implements CacheManager {
 
         totalReads.incrementAndGet();
         String lockKey = key.getFullKey();
+        Object lock = getCacheLock(lockKey);
 
-        synchronized (getCacheLock(lockKey)) {
-            try {
+        try {
+            synchronized (lock) {
                 // 逐级查找
                 T value = null;
                 int hitLevel = -1;
@@ -267,7 +269,7 @@ public class MultiLevelCacheManager implements CacheManager {
                         }
                     } catch (Exception e) {
                         // 某个缓存级别失败，记录日志并继续尝试下一个缓存级别
-                        log.warn("缓存读取失败: {} [Level: {}], 将尝试下一个缓存级别", 
+                        log.warn("缓存读取失败: {} [Level: {}], 将尝试下一个缓存级别",
                                 manager.getCacheType(), manager.getCacheLevel(), e);
                     }
                 }
@@ -275,20 +277,14 @@ public class MultiLevelCacheManager implements CacheManager {
                 if (value == null) {
                     totalMisses.incrementAndGet();
                     log.debug("多级缓存未命中: key={}", key);
-
-                    // 缓存未命中，可以在这里加载数据
-                    // value = loadData(key);
-                    // if (value != null && cacheAside) {
-                    //     asyncExecutor.submit(() -> put(key, value));
-                    // }
                 } else {
                     log.debug("多级缓存命中: key={}, level={}", key, hitLevel);
                 }
 
                 return value;
-            } finally {
-                releaseCacheLock(lockKey);
             }
+        } finally {
+            releaseCacheLock(lockKey, lock);
         }
     }
 
@@ -353,9 +349,10 @@ public class MultiLevelCacheManager implements CacheManager {
 
         totalDeletes.incrementAndGet();
         String lockKey = key.getFullKey();
+        Object lock = getCacheLock(lockKey);
 
-        synchronized (getCacheLock(lockKey)) {
-            try {
+        try {
+            synchronized (lock) {
                 boolean allSuccess = true;
 
                 // 删除所有级别的缓存
@@ -369,9 +366,9 @@ public class MultiLevelCacheManager implements CacheManager {
                 }
 
                 return allSuccess;
-            } finally {
-                releaseCacheLock(lockKey);
             }
+        } finally {
+            releaseCacheLock(lockKey, lock);
         }
     }
 
@@ -672,8 +669,10 @@ public class MultiLevelCacheManager implements CacheManager {
     /**
      * 释放缓存锁
      */
-    private void releaseCacheLock(String key) {
-        cacheLocks.remove(key);
+    private void releaseCacheLock(String key, Object lock) {
+        if (lock != null) {
+            cacheLocks.remove(key, lock);
+        }
     }
 
     // =============== 公共方法 ===============
