@@ -20092,6 +20092,9 @@
     "dataType": "BOOLEAN",
     "readWrite": "RW",
     "collectionMode": "SUBSCRIPTION",
+    "minValue": 20.0,
+    "maxValue": 100.0,
+    "unit": "℃",
     "additionalConfig": {
       "opcUaType": "BOOLEAN",
       "subscribe": true,

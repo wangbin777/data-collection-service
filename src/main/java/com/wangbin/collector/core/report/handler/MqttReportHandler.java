@@ -2,6 +2,7 @@ package com.wangbin.collector.core.report.handler;
 
 import com.wangbin.collector.common.constant.MessageConstant;
 import com.wangbin.collector.common.constant.ProtocolConstant;
+import com.wangbin.collector.common.enums.QualityEnum;
 import com.wangbin.collector.core.report.model.ReportConfig;
 import com.wangbin.collector.core.report.model.ReportData;
 import com.wangbin.collector.core.report.model.ReportResult;
@@ -434,17 +435,9 @@ public class MqttReportHandler extends AbstractReportHandler {
     private byte[] buildJsonPayload(ReportData data, ReportConfig config) {
         Map<String, Object> jsonData = new HashMap<>();
 
-        // 添加基本数据
-        jsonData.put("pointCode", data.getPointCode());
-        jsonData.put("pointName", data.getPointName());
-        jsonData.put("value", data.getValue());
-        jsonData.put("timestamp", data.getTimestamp());
-        jsonData.put("quality", data.getQuality() != null ? data.getQuality().name() : "GOOD");
-
-        // 添加元数据
-        if (data.getMetadata() != null && !data.getMetadata().isEmpty()) {
-            jsonData.put("metadata", data.getMetadata());
-        }
+        jsonData.put("version", MessageConstant.MESSAGE_VERSION_1_0);
+        jsonData.put("method", data.getMethod());
+        jsonData.put("params", data.getMetadata());
 
         // 转换为JSON字符串
         String jsonString = simpleJsonEncode(jsonData);
@@ -458,7 +451,7 @@ public class MqttReportHandler extends AbstractReportHandler {
         text.append("timestamp=").append(data.getTimestamp()).append(";");
 
         if (data.getQuality() != null) {
-            text.append("quality=").append(data.getQuality().name()).append(";");
+            text.append("quality=").append(data.getQuality()).append(";");
         }
 
         return text.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);

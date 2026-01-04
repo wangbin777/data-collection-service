@@ -25,11 +25,11 @@ spring:
   # Redis 认证配置（新方式）
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: 43.138.73.155
+      port: 6739
       database: 0
       timeout: 3000
-      password: your_password_here  # 如果有密码的话
+      password: wangbin@123  # 如果有密码的话
       lettuce:
         pool:
           max-active: 20
@@ -158,7 +158,7 @@ collector:
   # 数据上报配置
   report:
     enabled: true
-    mode: websocket   # websocket/http/mqtt/tcp
+    mode: mqtt   # websocket/http/mqtt/tcp
     batch-size: 100   # 批量上报大小
     interval: 1000    # 上报间隔(毫秒)
     timeout: 3000     # 上报超时(毫秒)
@@ -181,9 +181,9 @@ collector:
     # MQTT上报配置
     mqtt:
       broker-url: tcp://localhost:1883
-      client-id: collector-${collector.service.id}
-      username: admin
-      password: admin
+      client-id: byxuTQjqn6TCDwJ0.collector-1
+      username: collector-1&byxuTQjqn6TCDwJ0
+      password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
       qos: 1
       clean-session: true
       connection-timeout: 30

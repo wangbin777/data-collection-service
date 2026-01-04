@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.report.handler;
 
+import com.wangbin.collector.common.enums.QualityEnum;
 import com.wangbin.collector.core.report.model.ReportConfig;
 import com.wangbin.collector.core.report.model.ReportData;
 import com.wangbin.collector.core.report.model.ReportResult;
@@ -576,7 +577,7 @@ public class HttpReportHandler extends AbstractReportHandler {
         jsonData.put("pointName", data.getPointName());
         jsonData.put("value", data.getValue());
         jsonData.put("timestamp", data.getTimestamp());
-        jsonData.put("quality", data.getQuality() != null ? data.getQuality().name() : "GOOD");
+        jsonData.put("quality", data.getQuality() != null ? data.getQuality() : QualityEnum.GOOD.getText());
 
         // 添加元数据
         if (data.getMetadata() != null && !data.getMetadata().isEmpty()) {
@@ -615,7 +616,7 @@ public class HttpReportHandler extends AbstractReportHandler {
         formData.add("value", data.getValue() != null ? data.getValue().toString() : "");
         formData.add("timestamp", String.valueOf(data.getTimestamp()));
         if (data.getQuality() != null) {
-            formData.add("quality", data.getQuality().name());
+            formData.add("quality", data.getQuality());
         }
 
         // 添加元数据（JSON格式）
@@ -651,7 +652,7 @@ public class HttpReportHandler extends AbstractReportHandler {
         xml.append("  <value>").append(escapeXml(data.getValue() != null ? data.getValue().toString() : "")).append("</value>\n");
         xml.append("  <timestamp>").append(data.getTimestamp()).append("</timestamp>\n");
         if (data.getQuality() != null) {
-            xml.append("  <quality>").append(data.getQuality().name()).append("</quality>\n");
+            xml.append("  <quality>").append(data.getQuality()).append("</quality>\n");
         }
         xml.append("</data>");
 

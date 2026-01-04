@@ -1,8 +1,10 @@
 package com.wangbin.collector.core.processor;
 
 import com.wangbin.collector.common.domain.enums.DataQuality;
+import com.wangbin.collector.common.enums.QualityEnum;
 import lombok.Data;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,6 +15,7 @@ import java.util.Map;
 @Data
 public class ProcessResult implements Serializable {
 
+    @Serial
     private static final long serialVersionUID = 1L;
 
     // 处理状态
@@ -25,7 +28,7 @@ public class ProcessResult implements Serializable {
     private Object processedValue;
 
     // 数据质量
-    private int quality = 100;
+    private int quality = QualityEnum.GOOD.getCode();
 
     // 质量描述
     private String qualityDescription;

@@ -1,10 +1,12 @@
 package com.wangbin.collector.core.cache.aspect;
 
+import com.wangbin.collector.common.constant.MessageConstant;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.core.cache.manager.MultiLevelCacheManager;
 import com.wangbin.collector.core.cache.model.CacheKey;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.processor.ProcessResult;
+import com.wangbin.collector.core.report.service.CacheReportService;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.AfterReturning;
@@ -28,6 +30,9 @@ public class CollectorDataCacheAspect {
 
     @Autowired
     private MultiLevelCacheManager multiLevelCacheManager;
+
+    @Autowired
+    private CacheReportService cacheReportService;
 
     /**
      * 定义切点：拦截BaseCollector类及其子类的readPoint方法
@@ -128,8 +133,10 @@ public class CollectorDataCacheAspect {
             
             // 4. 保存到缓存
             multiLevelCacheManager.put(cacheKey, value, expireTime);
-            
+
             log.debug("异步缓存数据成功：{}.{} = {}, 过期时间：{}ms", deviceId, point.getPointName(), value, expireTime);
+
+            cacheReportService.reportPoint(deviceId, MessageConstant.MESSAGE_TYPE_PROPERTY_POST, point, value);
         } catch (Exception e) {
             log.error("异步缓存数据失败", e);
         }
@@ -155,6 +162,8 @@ public class CollectorDataCacheAspect {
                     CacheKey cacheKey = CacheKey.dataKey(deviceId, pointId);
                     long expireTime = getCacheExpireTime(point);
                     multiLevelCacheManager.put(cacheKey, cacheValue, expireTime);
+
+                    cacheReportService.reportPoint(deviceId,MessageConstant.MESSAGE_TYPE_PROPERTY_POST, point, processResult);
                 }
             }
             

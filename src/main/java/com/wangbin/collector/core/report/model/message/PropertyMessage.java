@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.report.model.message;
 
+import com.wangbin.collector.common.constant.MessageConstant;
 import lombok.Data;
 
 /**
@@ -8,7 +9,7 @@ import lombok.Data;
 @Data
 public class PropertyMessage extends IoTMessage {
     public PropertyMessage() {
-        setMethod("thing.property.post");
+        setMethod(MessageConstant.MESSAGE_TYPE_PROPERTY_POST);
         setTimestamp(System.currentTimeMillis());
     }
 

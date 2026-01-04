@@ -107,7 +107,7 @@ public class IoTProtocolService {
 
         // 添加数据质量信息
         if (data.getQuality() != null) {
-            message.addParam("quality", data.getQuality().name());
+            message.addParam("quality", data.getQuality());
         }
 
         // 添加元数据
