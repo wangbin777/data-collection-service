@@ -72,10 +72,14 @@ public class CollectionScheduler {
     private final ReentrantLock scheduleLock = new ReentrantLock();
 
     // 时间片配置
-    private static final int TIME_SLICE_COUNT = 2;          // 1秒分成10个时间片
-    private static final int TIME_SLICE_INTERVAL = 500;      // 每个时间片100ms
+    private AtomicInteger TIME_SLICE_COUNT = new AtomicInteger(2);          // 动态时间片数量，初始2片
+    private static final int MAX_TIME_SLICE_COUNT = 10;                     // 最大时间片数量
+    private static final int MIN_TIME_SLICE_INTERVAL = 50;                 // 最小时间片间隔（ms）
+    private static final int DEFAULT_TIME_SLICE_INTERVAL = 500;            // 默认时间片间隔（ms）
+    private AtomicInteger TIME_SLICE_INTERVAL = new AtomicInteger(500);    // 动态时间片间隔（ms）
     private static final int MAX_BATCH_SIZE = 50;            // 每批最大点数
     private static final int MAX_CONCURRENT_BATCHES = 32;    // 最大并发批次数
+    private static final int DYNAMIC_ADJUST_INTERVAL = 30000; // 动态调整间隔（ms）
 
     @PostConstruct
     public void init() {
@@ -125,17 +129,20 @@ public class CollectionScheduler {
         );
 
         // 初始化时间片任务表
-        for (int i = 0; i < TIME_SLICE_COUNT; i++) {
+        for (int i = 0; i < TIME_SLICE_COUNT.get(); i++) {
             timeSliceTasks.put(i, new CopyOnWriteArrayList<>());
         }
 
         // 启动时间片调度
         startTimeSliceScheduling();
 
+        // 启动动态时间片调整
+        startDynamicTimeSliceAdjustment();
+
         // 启动性能监控
         startPerformanceMonitoring();
 
-        log.info("高性能采集调度器初始化完成，CPU核心数: {}, 时间片数: {}", cpuCores, TIME_SLICE_COUNT);
+        log.info("高性能采集调度器初始化完成，CPU核心数: {}, 初始时间片数: {}", cpuCores, TIME_SLICE_COUNT.get());
 
         // 延迟启动所有设备
         timeSliceScheduler.schedule(this::autoStartAllDevices, 5, TimeUnit.SECONDS);
@@ -167,7 +174,10 @@ public class CollectionScheduler {
      * 启动时间片调度
      */
     private void startTimeSliceScheduling() {
-        for (int sliceIndex = 0; sliceIndex < TIME_SLICE_COUNT; sliceIndex++) {
+        int sliceCount = TIME_SLICE_COUNT.get();
+        int sliceInterval = TIME_SLICE_INTERVAL.get();
+        
+        for (int sliceIndex = 0; sliceIndex < sliceCount; sliceIndex++) {
             final int currentSlice = sliceIndex;
 
             // 每个时间片启动一个调度任务
@@ -177,10 +187,10 @@ public class CollectionScheduler {
                 } catch (Exception e) {
                     log.error("时间片 {} 执行异常", currentSlice, e);
                 }
-            }, sliceIndex * TIME_SLICE_INTERVAL, TIME_SLICE_INTERVAL * TIME_SLICE_COUNT, TimeUnit.MILLISECONDS);
+            }, sliceIndex * sliceInterval, sliceInterval * sliceCount, TimeUnit.MILLISECONDS);
         }
 
-        log.info("时间片调度已启动，共 {} 个时间片，每片 {}ms", TIME_SLICE_COUNT, TIME_SLICE_INTERVAL);
+        log.info("时间片调度已启动，共 {} 个时间片，每片 {}ms", sliceCount, sliceInterval);
     }
 
     /**
@@ -188,6 +198,7 @@ public class CollectionScheduler {
      */
     private void executeTimeSlice(int sliceIndex) {
         long startTime = System.currentTimeMillis();
+        int currentSliceInterval = TIME_SLICE_INTERVAL.get();
 
         try {
             List<DeviceBatchTask> tasks = timeSliceTasks.get(sliceIndex);
@@ -217,7 +228,7 @@ public class CollectionScheduler {
             // 等待本时间片所有任务完成（有超时限制）
             try {
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                        .get(TIME_SLICE_INTERVAL - 10, TimeUnit.MILLISECONDS); // 留10ms余量
+                        .get(currentSliceInterval - 10, TimeUnit.MILLISECONDS); // 留10ms余量
             } catch (TimeoutException e) {
                 log.warn("时间片 {} 执行超时", sliceIndex);
             } catch (Exception e) {
@@ -228,9 +239,9 @@ public class CollectionScheduler {
             long executionTime = System.currentTimeMillis() - startTime;
             performanceMonitor.recordTimeSliceExecution(sliceIndex, executionTime);
 
-            if (executionTime > TIME_SLICE_INTERVAL) {
+            if (executionTime > currentSliceInterval) {
                 log.warn("时间片 {} 执行时间 {}ms 超过限制 {}ms",
-                        sliceIndex, executionTime, TIME_SLICE_INTERVAL);
+                        sliceIndex, executionTime, currentSliceInterval);
             }
         }
     }
@@ -593,14 +604,55 @@ public class CollectionScheduler {
     }
 
     /**
-     * 获取最优批量大小（简化的动态调整）
+     * 获取最优批量大小（基于历史数据的智能预测）
      */
     private int getOptimalBatchSize(String deviceId) {
-        // 默认值
-        int defaultSize = 50;
-
-        // 可以根据设备历史性能动态调整
-        // 这里简化：根据设备类型设置不同默认值
+        try {
+            // 1. 优先从设备性能统计中获取历史最优值
+            DevicePerformance perf = performanceMonitor.devicePerformance.get(deviceId);
+            if (perf != null) {
+                // 基于历史成功率和执行时间计算最优批次大小
+                double successRate = perf.successfulBatches.get() / Math.max(1.0, perf.successfulBatches.get() + perf.failedBatches.get());
+                long avgExecutionTime = perf.successfulBatches.get() > 0 ? 
+                        perf.totalExecutionTime.get() / perf.successfulBatches.get() : 0;
+                
+                // 2. 智能调整策略
+                int optimalSize = perf.currentBatchSize;
+                
+                if (successRate < 0.8) {
+                    // 成功率低，减小批次大小
+                    optimalSize = Math.max(10, optimalSize * 80 / 100);
+                } else if (avgExecutionTime < 50 && successRate > 0.95) {
+                    // 执行快且成功率高，增大批次大小
+                    optimalSize = Math.min(200, optimalSize * 120 / 100);
+                } else if (avgExecutionTime > 200) {
+                    // 执行慢，减小批次大小
+                    optimalSize = Math.max(10, optimalSize * 70 / 100);
+                }
+                
+                // 3. 结合协议特性限制
+                DeviceInfo deviceInfo = configManager.getDevice(deviceId);
+                if (deviceInfo != null) {
+                    String protocol = deviceInfo.getProtocolType();
+                    if (protocol != null) {
+                        optimalSize = Math.min(optimalSize, getProtocolMaxBatchSize(protocol));
+                    }
+                }
+                
+                return optimalSize;
+            }
+        } catch (Exception e) {
+            log.warn("获取设备 {} 最优批次大小失败，使用默认值", deviceId, e);
+        }
+        
+        // 默认值：根据协议类型
+        return getDefaultBatchSizeByProtocol(deviceId);
+    }
+    
+    /**
+     * 根据协议类型获取默认批次大小
+     */
+    private int getDefaultBatchSizeByProtocol(String deviceId) {
         try {
             DeviceInfo deviceInfo = configManager.getDevice(deviceId);
             if (deviceInfo != null) {
@@ -619,8 +671,23 @@ public class CollectionScheduler {
         } catch (Exception e) {
             log.warn("获取设备 {} 协议类型失败，使用默认批量大小", deviceId, e);
         }
-
-        return defaultSize;
+        return 50;
+    }
+    
+    /**
+     * 获取协议最大批次大小
+     */
+    private int getProtocolMaxBatchSize(String protocol) {
+        return switch (protocol.toUpperCase()) {
+            case "MODBUS_TCP", "MODBUS_RTU" -> 125; // Modbus协议限制
+            case "OPC_UA" -> 200; // OPC UA支持较大批量
+            case "SIEMENS_S7" -> 300; // S7协议
+            case "MQTT" -> 50; // MQTT主题数量限制
+            case "SNMP" -> 30; // SNMP批量限制
+            case "COAP" -> 20; // CoAP协议限制
+            case "IEC104" -> 100; // IEC104协议
+            default -> 200; // 默认最大
+        };
     }
 
     /**
@@ -629,11 +696,12 @@ public class CollectionScheduler {
     private int calculateOptimalTimeSlice(String deviceId, int batchIndex, int totalBatches) {
         // 使用设备ID的哈希值作为基础偏移，避免所有设备在同一时间片
         int deviceHash = Math.abs(deviceId.hashCode());
-        int baseSlice = deviceHash % TIME_SLICE_COUNT;
+        int sliceCount = TIME_SLICE_COUNT.get();
+        int baseSlice = deviceHash % sliceCount;
 
         // 根据批次索引分配时间片（均匀分布）
-        int sliceIncrement = TIME_SLICE_COUNT / Math.min(totalBatches, TIME_SLICE_COUNT);
-        int sliceIndex = (baseSlice + batchIndex * sliceIncrement) % TIME_SLICE_COUNT;
+        int sliceIncrement = sliceCount / Math.min(totalBatches, sliceCount);
+        int sliceIndex = (baseSlice + batchIndex * sliceIncrement) % sliceCount;
 
         return sliceIndex;
     }
@@ -804,6 +872,131 @@ public class CollectionScheduler {
     private void startPerformanceMonitoring() {
         timeSliceScheduler.scheduleAtFixedRate(performanceMonitor::logStatistics, 60, 60, TimeUnit.SECONDS);  // 每分钟输出一次统计
     }
+    
+    /**
+     * 启动动态时间片调整任务
+     */
+    private void startDynamicTimeSliceAdjustment() {
+        timeSliceScheduler.scheduleAtFixedRate(this::adjustTimeSlicesDynamically, DYNAMIC_ADJUST_INTERVAL, DYNAMIC_ADJUST_INTERVAL, TimeUnit.MILLISECONDS);
+        log.info("动态时间片调整已启动，调整间隔: {}ms", DYNAMIC_ADJUST_INTERVAL);
+    }
+    
+    /**
+     * 动态调整时间片数量和间隔
+     */
+    private void adjustTimeSlicesDynamically() {
+        try {
+            // 1. 获取当前系统负载
+            double cpuLoad = getSystemCpuLoad();
+            int activeDevices = deviceScheduleInfo.size();
+            long totalTasks = timeSliceTasks.values().stream().mapToInt(List::size).sum();
+            
+            // 2. 计算新的时间片数量
+            int newSliceCount = calculateOptimalSliceCount(activeDevices, totalTasks, cpuLoad);
+            
+            // 3. 计算新的时间片间隔
+            int newSliceInterval = calculateOptimalSliceInterval(newSliceCount, cpuLoad);
+            
+            // 4. 更新时间片配置
+            updateTimeSliceConfig(newSliceCount, newSliceInterval);
+
+            log.info("动态调整时间片: 设备数={}, 任务数={}, CPU负载={}, 调整后片数={}, 片间隔={}ms",
+                    activeDevices,
+                    totalTasks,
+                    String.format("%.2f", cpuLoad), // 只格式化这一个值
+                    newSliceCount,
+                    newSliceInterval);
+        } catch (Exception e) {
+            log.error("动态调整时间片失败", e);
+        }
+    }
+    
+    /**
+     * 计算最优时间片数量
+     */
+    private int calculateOptimalSliceCount(int activeDevices, long totalTasks, double cpuLoad) {
+        // 基础片数：根据设备数和任务数计算
+        int baseSlices = Math.max(1, Math.min(activeDevices / 5 + 1, MAX_TIME_SLICE_COUNT));
+        
+        // 根据CPU负载调整
+        if (cpuLoad > 0.8) {
+            // 高负载时增加片数，降低每片任务数
+            baseSlices = Math.min(MAX_TIME_SLICE_COUNT, baseSlices + 2);
+        } else if (cpuLoad < 0.3) {
+            // 低负载时减少片数，增加每片任务数
+            baseSlices = Math.max(2, baseSlices - 1);
+        }
+        
+        return baseSlices;
+    }
+    
+    /**
+     * 计算最优时间片间隔
+     */
+    private int calculateOptimalSliceInterval(int sliceCount, double cpuLoad) {
+        // 基础间隔：根据片数计算，保证总调度周期约为1秒
+        int baseInterval = Math.max(MIN_TIME_SLICE_INTERVAL, 1000 / sliceCount);
+        
+        // 根据CPU负载调整
+        if (cpuLoad > 0.7) {
+            // 高负载时增加间隔，减少调度频率
+            baseInterval = Math.min(baseInterval * 2, DEFAULT_TIME_SLICE_INTERVAL * 2);
+        } else if (cpuLoad < 0.4) {
+            // 低负载时减少间隔，提高调度频率
+            baseInterval = Math.max(MIN_TIME_SLICE_INTERVAL, baseInterval / 2);
+        }
+        
+        return baseInterval;
+    }
+    
+    /**
+     * 更新时间片配置
+     */
+    private void updateTimeSliceConfig(int newSliceCount, int newSliceInterval) {
+        int oldSliceCount = TIME_SLICE_COUNT.get();
+        
+        // 更新时间片数量
+        if (newSliceCount != oldSliceCount) {
+            TIME_SLICE_COUNT.set(newSliceCount);
+            
+            // 重新初始化时间片任务队列
+            timeSliceTasks.clear();
+            for (int i = 0; i < newSliceCount; i++) {
+                timeSliceTasks.put(i, new CopyOnWriteArrayList<>());
+            }
+            
+            // 重新调度所有设备
+            rescheduleAllDevices();
+        }
+        
+        // 更新时间片间隔
+        TIME_SLICE_INTERVAL.set(newSliceInterval);
+    }
+    
+    /**
+     * 重新调度所有设备
+     */
+    private void rescheduleAllDevices() {
+        List<String> deviceIds = new ArrayList<>(deviceScheduleInfo.keySet());
+        for (String deviceId : deviceIds) {
+            try {
+                stopDevice(deviceId);
+                startDevice(deviceId);
+            } catch (Exception e) {
+                log.error("重新调度设备 {} 失败", deviceId, e);
+            }
+        }
+    }
+    
+    /**
+     * 获取系统CPU负载
+     */
+    private double getSystemCpuLoad() {
+        // 简化实现，返回一个基于活跃线程数的估算值
+        int activeThreads = asyncCollectorPool.getActiveCount() + dataProcessorPool.getActiveCount();
+        int maxThreads = asyncCollectorPool.getMaximumPoolSize() + dataProcessorPool.getMaximumPoolSize();
+        return Math.min(1.0, (double) activeThreads / maxThreads);
+    }
 
     /**
      * 关闭执行器
@@ -948,10 +1141,27 @@ public class CollectionScheduler {
         private final AtomicLong totalProcessedPoints = new AtomicLong(0);
         private final AtomicLong totalSuccessfulBatches = new AtomicLong(0);
         private final AtomicLong totalFailedBatches = new AtomicLong(0);
-        private final long[] timeSliceExecutionTimes = new long[TIME_SLICE_COUNT];
+        private final Map<Integer, Long> timeSliceExecutionTimes = new ConcurrentHashMap<>();
+        
+        // 系统资源监控
+        private final AtomicLong peakMemoryUsage = new AtomicLong(0);
+        private final AtomicLong cpuUsage = new AtomicLong(0);
+        
+        // 瓶颈分析
+        private final Map<String, Long> slowestDevices = new ConcurrentHashMap<>(); // 最慢的设备列表
+        private final Map<Integer, Long> overloadedSlices = new ConcurrentHashMap<>(); // 过载的时间片
+        
+        // 统计周期
+        private static final long STATISTICS_CYCLE = 60000; // 60秒统计周期
+        private long lastStatisticsTime = System.currentTimeMillis();
 
         void recordTimeSliceExecution(int sliceIndex, long executionTime) {
-            timeSliceExecutionTimes[sliceIndex] = executionTime;
+            timeSliceExecutionTimes.put(sliceIndex, executionTime);
+            
+            // 检查时间片是否过载（执行时间超过时间片间隔）
+            if (executionTime > TIME_SLICE_INTERVAL.get()) {
+                overloadedSlices.put(sliceIndex, executionTime);
+            }
         }
 
         void recordBatchSuccess(String deviceId, int pointCount, long executionTime) {
@@ -962,6 +1172,11 @@ public class CollectionScheduler {
                     deviceId, k -> new DevicePerformance(deviceId)
             );
             perf.recordSuccess(pointCount, executionTime);
+            
+            // 记录最慢设备（执行时间超过200ms）
+            if (executionTime > 200) {
+                slowestDevices.put(deviceId, executionTime);
+            }
         }
 
         void recordBatchFailure(String deviceId) {
@@ -988,26 +1203,127 @@ public class CollectionScheduler {
         }
 
         void logStatistics() {
+            long currentTime = System.currentTimeMillis();
+            long elapsedTime = currentTime - lastStatisticsTime;
+            lastStatisticsTime = currentTime;
+            
             long totalPoints = totalProcessedPoints.getAndSet(0);
             long successfulBatches = totalSuccessfulBatches.getAndSet(0);
             long failedBatches = totalFailedBatches.getAndSet(0);
 
-            double pointsPerSecond = totalPoints / 60.0;  // 每分钟统计
+            double pointsPerSecond = elapsedTime > 0 ? totalPoints / (elapsedTime / 1000.0) : 0;
+            double batchSuccessRate = successfulBatches + failedBatches > 0 ? 
+                    successfulBatches * 100.0 / (successfulBatches + failedBatches) : 0;
 
-            log.info("性能统计 - 处理点总数：{},平均每分钟点数: {}/分钟, 成功率: {}%, 活跃设备: {}",
+            log.info("性能统计 - 处理点总数：{}, 平均每秒点数: {}/秒, 成功率: {}%, 活跃设备: {}",
                     totalPoints,
-                    pointsPerSecond,
-                    String.format("%.2f",successfulBatches * 100.0 / (successfulBatches + failedBatches)),
+                    String.format("%.2f", pointsPerSecond),
+                    String.format("%.2f", batchSuccessRate),
                     devicePerformance.size()
             );
 
             // 输出时间片执行情况
             StringBuilder sliceInfo = new StringBuilder("时间片执行时间: ");
-            for (int i = 0; i < TIME_SLICE_COUNT; i++) {
-                sliceInfo.append(String.format("[%d:%dms]", i, timeSliceExecutionTimes[i]));
-                if (i < TIME_SLICE_COUNT - 1) sliceInfo.append(", ");
+            for (Map.Entry<Integer, Long> entry : timeSliceExecutionTimes.entrySet()) {
+                sliceInfo.append(String.format("[%d:%dms]", entry.getKey(), entry.getValue()));
+                if (entry.getValue() > TIME_SLICE_INTERVAL.get()) {
+                    sliceInfo.append("(OVERLOAD)");
+                }
+                sliceInfo.append(", ");
+            }
+            if (!timeSliceExecutionTimes.isEmpty()) {
+                sliceInfo.setLength(sliceInfo.length() - 2); // 移除最后一个逗号和空格
             }
             log.debug(sliceInfo.toString());
+            
+            // 输出瓶颈分析
+            analyzeBottlenecks();
+            
+            // 输出设备健康状态
+            reportDeviceHealth();
+        }
+        
+        /**
+         * 瓶颈分析
+         */
+        private void analyzeBottlenecks() {
+            // 1. 检查慢设备
+            if (!slowestDevices.isEmpty()) {
+                // 按执行时间排序，取前5个最慢设备
+                List<Map.Entry<String, Long>> sortedSlowest = slowestDevices.entrySet().stream()
+                        .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                        .limit(5)
+                        .toList();
+                
+                StringBuilder slowDeviceInfo = new StringBuilder("慢速设备（执行时间>200ms）: ");
+                for (Map.Entry<String, Long> entry : sortedSlowest) {
+                    slowDeviceInfo.append(String.format("%s:%dms, ", entry.getKey(), entry.getValue()));
+                }
+                slowDeviceInfo.setLength(slowDeviceInfo.length() - 2);
+                log.warn(slowDeviceInfo.toString());
+                
+                // 清空慢速设备列表，准备下一轮统计
+                slowestDevices.clear();
+            }
+            
+            // 2. 检查过载时间片
+            if (!overloadedSlices.isEmpty()) {
+                StringBuilder overloadInfo = new StringBuilder("过载时间片（执行时间>片间隔）: ");
+                for (Map.Entry<Integer, Long> entry : overloadedSlices.entrySet()) {
+                    overloadInfo.append(String.format("%d:%dms, ", entry.getKey(), entry.getValue()));
+                }
+                overloadInfo.setLength(overloadInfo.length() - 2);
+                log.warn(overloadInfo.toString());
+                
+                // 清空过载时间片列表
+                overloadedSlices.clear();
+            }
+            
+            // 3. 检查系统资源
+            Runtime runtime = Runtime.getRuntime();
+            long currentMemory = runtime.totalMemory() - runtime.freeMemory();
+            if (currentMemory > peakMemoryUsage.get()) {
+                peakMemoryUsage.set(currentMemory);
+            }
+            
+            log.debug("系统资源: 当前内存占用={}MB, 峰值内存={}MB, 可用处理器数={}",
+                    currentMemory / (1024 * 1024),
+                    peakMemoryUsage.get() / (1024 * 1024),
+                    Runtime.getRuntime().availableProcessors());
+        }
+        
+        /**
+         * 设备健康报告
+         */
+        private void reportDeviceHealth() {
+            // 统计不同健康状态的设备数量
+            long healthyDevices = 0;
+            long warningDevices = 0;
+            long criticalDevices = 0;
+            
+            for (DevicePerformance perf : devicePerformance.values()) {
+                double healthScore = perf.calculateHealthScore();
+                String risk = perf.predictFailureRisk();
+                
+                if (healthScore > 80 && "NONE".equals(risk)) {
+                    healthyDevices++;
+                } else if (healthScore > 60 || "LOW".equals(risk)) {
+                    warningDevices++;
+                } else {
+                    criticalDevices++;
+                }
+                
+                // 记录高风险设备
+                if ("HIGH".equals(risk) || healthScore < 50) {
+                    log.warn("设备 {} 健康度低: 健康分={}%, 故障风险={}, 连续失败={}次",
+                            perf.deviceId, 
+                            String.format("%.1f", healthScore),
+                            risk,
+                            perf.consecutiveFailureCount);
+                }
+            }
+            
+            log.info("设备健康统计: 健康={}, 警告={}, 危险={}", healthyDevices, warningDevices, criticalDevices);
         }
 
         Map<String, Object> getDevicePerformance(String deviceId) {
@@ -1030,6 +1346,20 @@ public class CollectionScheduler {
         AtomicLong totalExecutionTime = new AtomicLong(0);
         int currentBatchSize = 30;
         long lastAdjustTime = System.currentTimeMillis();
+        
+        // 设备健康度相关
+        double healthScore = 100.0; // 健康度分数，100为满分
+        long lastHealthCheckTime = System.currentTimeMillis();
+        int consecutiveFailureCount = 0; // 连续失败次数
+        long lastSuccessTime = System.currentTimeMillis(); // 最后成功时间
+        
+        // 响应时间趋势
+        List<Long> recentResponseTimes = new ArrayList<>(); // 最近10次响应时间
+        static final int MAX_RESPONSE_TIME_HISTORY = 10;
+        
+        // 数据变化率
+        Map<String, Double> pointChangeRates = new ConcurrentHashMap<>(); // 数据点变化率统计
+        Map<String, Object> lastValues = new ConcurrentHashMap<>(); // 数据点最后值
 
         DevicePerformance(String deviceId) {
             this.deviceId = deviceId;
@@ -1039,14 +1369,104 @@ public class CollectionScheduler {
             totalPoints.addAndGet(pointCount);
             successfulBatches.incrementAndGet();
             totalExecutionTime.addAndGet(executionTime);
+            
+            // 更新响应时间历史
+            updateResponseTimeHistory(executionTime);
+            
+            // 重置连续失败计数
+            consecutiveFailureCount = 0;
+            lastSuccessTime = System.currentTimeMillis();
         }
 
         void recordFailure() {
             failedBatches.incrementAndGet();
+            consecutiveFailureCount++;
+            // 更新响应时间历史为-1表示失败
+            updateResponseTimeHistory(-1);
         }
 
         void recordDataProcessed() {
             // 可记录数据处理相关统计
+        }
+        
+        /**
+         * 更新响应时间历史
+         */
+        void updateResponseTimeHistory(long executionTime) {
+            synchronized (recentResponseTimes) {
+                recentResponseTimes.add(executionTime);
+                if (recentResponseTimes.size() > MAX_RESPONSE_TIME_HISTORY) {
+                    recentResponseTimes.remove(0);
+                }
+            }
+        }
+        
+        /**
+         * 计算设备健康度分数
+         */
+        double calculateHealthScore() {
+            double score = 100.0;
+            
+            // 1. 成功率影响（50%权重）
+            double successRate = successfulBatches.get() / Math.max(1.0, successfulBatches.get() + failedBatches.get());
+            score *= (successRate * 0.5 + 0.5);
+            
+            // 2. 连续失败次数影响（20%权重）
+            if (consecutiveFailureCount > 0) {
+                double failurePenalty = Math.max(0.1, 1.0 - consecutiveFailureCount * 0.1);
+                score *= (failurePenalty * 0.2 + 0.8);
+            }
+            
+            // 3. 响应时间趋势影响（20%权重）
+            double avgResponseTime = getAverageResponseTime();
+            if (avgResponseTime > 200) { // 响应时间超过200ms
+                double responsePenalty = Math.max(0.5, 1.0 - (avgResponseTime - 200) / 1000.0);
+                score *= (responsePenalty * 0.2 + 0.8);
+            }
+            
+            // 4. 最近活动影响（10%权重）
+            long inactiveTime = System.currentTimeMillis() - lastSuccessTime;
+            if (inactiveTime > 300000) { // 超过5分钟无成功
+                double inactivePenalty = Math.max(0.5, 1.0 - (inactiveTime - 300000) / 300000.0);
+                score *= (inactivePenalty * 0.1 + 0.9);
+            }
+            
+            // 限制分数范围
+            healthScore = Math.max(0.0, Math.min(100.0, score));
+            lastHealthCheckTime = System.currentTimeMillis();
+            
+            return healthScore;
+        }
+        
+        /**
+         * 获取平均响应时间
+         */
+        long getAverageResponseTime() {
+            synchronized (recentResponseTimes) {
+                if (recentResponseTimes.isEmpty()) {
+                    return 0;
+                }
+                return (long) recentResponseTimes.stream()
+                        .filter(time -> time > 0)
+                        .mapToLong(Long::longValue)
+                        .average()
+                        .orElse(0.0);
+            }
+        }
+        
+        /**
+         * 预测设备故障风险
+         */
+        String predictFailureRisk() {
+            if (consecutiveFailureCount >= 3) {
+                return "HIGH";
+            } else if (calculateHealthScore() < 60) {
+                return "MEDIUM";
+            } else if (getAverageResponseTime() > 300) {
+                return "LOW";
+            } else {
+                return "NONE";
+            }
         }
 
         void adjustBatchSize(int percentChange) {
@@ -1076,6 +1496,11 @@ public class CollectionScheduler {
             stats.put("currentBatchSize", currentBatchSize);
             stats.put("successRate", (successfulBatches.get() + failedBatches.get()) > 0 ?
                     successfulBatches.get() * 100.0 / (successfulBatches.get() + failedBatches.get()) : 0);
+            stats.put("healthScore", calculateHealthScore());
+            stats.put("failureRisk", predictFailureRisk());
+            stats.put("consecutiveFailures", consecutiveFailureCount);
+            stats.put("averageResponseTime", getAverageResponseTime());
+            stats.put("recentResponseTimes", recentResponseTimes);
             return stats;
         }
     }

@@ -3,6 +3,7 @@ package com.wangbin.collector.core.collector.protocol.iec.base;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.config.CollectorProperties;
+import jakarta.annotation.PreDestroy;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.openmuc.j60870.*;
@@ -12,6 +13,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 抽象的IEC 104采集器
@@ -36,8 +38,20 @@ public abstract class AbstractIce104Collector extends BaseCollector {
     protected final Map<InterrogationKey, CompletableFuture<Void>> pendingInterrogations = new ConcurrentHashMap<>();
     protected ScheduledExecutorService interrogationScheduler;
 
-    private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
+    private static final AtomicInteger TIMEOUT_THREAD_COUNTER = new AtomicInteger(0);
+    private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1, r -> {
+        Thread thread = new Thread(r, "iec104-timeout-" + TIMEOUT_THREAD_COUNTER.incrementAndGet());
+        thread.setDaemon(true);
+        thread.setUncaughtExceptionHandler((t, e) ->
+                log.warn("IEC104 timeout scheduler thread {} failed", t.getName(), e));
+        return thread;
+    });
     private final long defaultTimeout = 5000;
+
+    @PreDestroy
+    protected void shutdownSchedulers() {
+        timeoutScheduler.shutdownNow();
+    }
 
     protected void initIec104Config(DeviceInfo deviceInfo) {
         this.iec104Config = collectorProperties != null
