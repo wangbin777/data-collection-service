@@ -20089,17 +20089,19 @@
     "pointName": "Motor Command 300",
     "deviceId": "OPCUA_DEVICE_001",
     "address": "ns=3;i=1301",
-    "dataType": "BOOLEAN",
+    "dataType": "DOUBLE",
     "readWrite": "RW",
     "collectionMode": "SUBSCRIPTION",
-    "minValue": 20.0,
+    "minValue": -10.0,
     "maxValue": 100.0,
     "unit": "℃",
     "additionalConfig": {
-      "opcUaType": "BOOLEAN",
-      "subscribe": true,
-      "samplingInterval": 1000,
-      "queueSize": 3
+      "reportEnabled": true,
+      "reportField": "opcua_command_300",
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   }
 ]

@@ -66,6 +66,29 @@ spring:
 # 采集服务核心配置
 # ============================================
 collector:
+  #采集定时配置
+  scheduler:
+    # 初始时间片数量 - 启动时创建的时间片线程数
+    # 每个时间片对应一个数据收集线程，用于并行采集不同设备
+    initial-time-slice-count: 4
+    # 最大时间片数量 - 系统允许的最大并发收集线程数
+    # 当采集任务增多时，系统会动态增加时间片数量，但不能超过此值
+    max-time-slice-count: 12
+    # 最小时间片间隔（毫秒）- 同一个时间片处理两个任务的最小间隔
+    # 防止CPU过度使用，确保系统不会过于频繁地调度任务
+    min-time-slice-interval-ms: 300
+    # 初始时间片间隔（毫秒）- 时间片线程默认的执行间隔
+    # 控制数据采集的频率，值越小采集越频繁，但CPU使用率越高
+    initial-time-slice-interval-ms: 1500
+    # 默认时间片间隔（毫秒）- 时间片线程默认的执行间隔
+    # 控制数据采集的频率，值越小采集越频繁，但CPU使用率越高
+    default-time-slice-interval-ms: 1500
+    # 动态调整间隔（毫秒）- 系统重新评估和调整时间片数量的间隔
+    # 系统会定期检查负载情况，动态增减时间片数量以优化性能
+    dynamic-adjust-interval-ms: 60000  # 1分钟
+    # 采集超时时间（毫秒）- 单个采集任务的最大执行时间
+    # 如果某个设备采集超过此时间，会被中断以防止阻塞其他采集任务
+    collect-timeout-ms: 800
   # 服务配置
   service:
     id: collector-1
@@ -160,7 +183,7 @@ collector:
     enabled: true
     mode: mqtt   # websocket/http/mqtt/tcp
     batch-size: 100   # 批量上报大小
-    interval: 1000    # 上报间隔(毫秒)
+    intervalMs: 1000    # 上报间隔(毫秒)
     timeout: 3000     # 上报超时(毫秒)
     retry-times: 3    # 上报重试次数
     max-queue-size: 5000
@@ -180,10 +203,11 @@ collector:
 
     # MQTT上报配置
     mqtt:
-      broker-url: tcp://localhost:1883
+     # broker-url: tcp://localhost:1883
+      broker-url: mqtt://broker.emqx.io:1883
       client-id: byxuTQjqn6TCDwJ0.collector-1
-      username: collector-1&byxuTQjqn6TCDwJ0
-      password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
+      #username: collector-1&byxuTQjqn6TCDwJ0
+      #password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
       qos: 1
       clean-session: true
       connection-timeout: 30

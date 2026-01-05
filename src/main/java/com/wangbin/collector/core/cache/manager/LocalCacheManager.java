@@ -165,7 +165,9 @@ public class LocalCacheManager extends AbstractCacheManager {
         CacheData<?> cacheData = cache.getIfPresent(cacheKey);
 
         if (cacheData == null) {
-            return false;
+            // key 已经被淘汰，视为成功，避免上层不断告警
+            keyMapping.remove(cacheKey);
+            return true;
         }
 
         // Caffeine不支持直接修改过期时间，需要重新放入

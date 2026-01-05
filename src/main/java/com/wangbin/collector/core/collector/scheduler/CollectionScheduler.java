@@ -11,6 +11,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
@@ -71,20 +72,39 @@ public class CollectionScheduler {
     // 调度锁，防止重复调度
     private final ReentrantLock scheduleLock = new ReentrantLock();
 
+    @Value("${collector.scheduler.initial-time-slice-count:2}")
+    private int initialTimeSliceCount;
+
+    @Value("${collector.scheduler.max-time-slice-count:10}")
+    private int maxTimeSliceCount;
+
+    @Value("${collector.scheduler.min-time-slice-interval-ms:50}")
+    private int minTimeSliceInterval;
+
+    @Value("${collector.scheduler.default-time-slice-interval-ms:1000}")
+    private int defaultTimeSliceInterval;
+
+    @Value("${collector.scheduler.initial-time-slice-interval-ms:1000}")
+    private int initialTimeSliceInterval;
+
+    @Value("${collector.scheduler.dynamic-adjust-interval-ms:30000}")
+    private int dynamicAdjustInterval;
+
+    @Value("${collector.scheduler.collect-timeout-ms:500}")
+    private long collectTimeoutMs;
+
     // 时间片配置
-    private AtomicInteger TIME_SLICE_COUNT = new AtomicInteger(2);          // 动态时间片数量，初始2片
-    private static final int MAX_TIME_SLICE_COUNT = 10;                     // 最大时间片数量
-    private static final int MIN_TIME_SLICE_INTERVAL = 50;                 // 最小时间片间隔（ms）
-    private static final int DEFAULT_TIME_SLICE_INTERVAL = 500;            // 默认时间片间隔（ms）
-    private AtomicInteger TIME_SLICE_INTERVAL = new AtomicInteger(500);    // 动态时间片间隔（ms）
-    private static final int MAX_BATCH_SIZE = 50;            // 每批最大点数
-    private static final int MAX_CONCURRENT_BATCHES = 32;    // 最大并发批次数
-    private static final int DYNAMIC_ADJUST_INTERVAL = 30000; // 动态调整间隔（ms）
+    private AtomicInteger TIME_SLICE_COUNT = new AtomicInteger(2);          // 动态时间片数量
+    private AtomicInteger TIME_SLICE_INTERVAL = new AtomicInteger(1000);    // 动态时间片间隔（ms）
 
     @PostConstruct
     public void init() {
         // 获取服务器CPU核心数
         int cpuCores = Runtime.getRuntime().availableProcessors();
+        int normalizedSliceCount = Math.max(1, Math.min(initialTimeSliceCount, maxTimeSliceCount));
+        TIME_SLICE_COUNT.set(normalizedSliceCount);
+        int normalizedInterval = Math.max(minTimeSliceInterval, initialTimeSliceInterval);
+        TIME_SLICE_INTERVAL.set(normalizedInterval);
 
         // ============ 优化的线程池初始化 ============
 
@@ -278,7 +298,7 @@ public class CollectionScheduler {
 
             // 超时控制
             Map<String, Object> values = collectFuture
-                    .completeOnTimeout(Collections.emptyMap(), 500, TimeUnit.MILLISECONDS)  // 500ms超时
+                    .completeOnTimeout(Collections.emptyMap(), collectTimeoutMs, TimeUnit.MILLISECONDS)
                     .join();
 
             if (!values.isEmpty()) {
@@ -877,8 +897,8 @@ public class CollectionScheduler {
      * 启动动态时间片调整任务
      */
     private void startDynamicTimeSliceAdjustment() {
-        timeSliceScheduler.scheduleAtFixedRate(this::adjustTimeSlicesDynamically, DYNAMIC_ADJUST_INTERVAL, DYNAMIC_ADJUST_INTERVAL, TimeUnit.MILLISECONDS);
-        log.info("动态时间片调整已启动，调整间隔: {}ms", DYNAMIC_ADJUST_INTERVAL);
+        timeSliceScheduler.scheduleAtFixedRate(this::adjustTimeSlicesDynamically, dynamicAdjustInterval, dynamicAdjustInterval, TimeUnit.MILLISECONDS);
+        log.info("动态时间片调整已启动，调整间隔: {}ms", dynamicAdjustInterval);
     }
     
     /**
@@ -895,15 +915,17 @@ public class CollectionScheduler {
             int newSliceCount = calculateOptimalSliceCount(activeDevices, totalTasks, cpuLoad);
             
             // 3. 计算新的时间片间隔
-            int newSliceInterval = calculateOptimalSliceInterval(newSliceCount, cpuLoad);
+            long avgExecution = performanceMonitor.getAverageTimeSliceExecution();
+            int newSliceInterval = calculateOptimalSliceInterval(newSliceCount, cpuLoad, avgExecution);
             
             // 4. 更新时间片配置
             updateTimeSliceConfig(newSliceCount, newSliceInterval);
 
-            log.info("动态调整时间片: 设备数={}, 任务数={}, CPU负载={}, 调整后片数={}, 片间隔={}ms",
+            log.info("动态调整时间片: 设备数={}, 任务数={}, CPU负载={}, 平均执行={}ms, 调整后片数={}, 片间隔={}ms",
                     activeDevices,
                     totalTasks,
-                    String.format("%.2f", cpuLoad), // 只格式化这一个值
+                    String.format("%.2f", cpuLoad),
+                    avgExecution,
                     newSliceCount,
                     newSliceInterval);
         } catch (Exception e) {
@@ -916,12 +938,12 @@ public class CollectionScheduler {
      */
     private int calculateOptimalSliceCount(int activeDevices, long totalTasks, double cpuLoad) {
         // 基础片数：根据设备数和任务数计算
-        int baseSlices = Math.max(1, Math.min(activeDevices / 5 + 1, MAX_TIME_SLICE_COUNT));
+        int baseSlices = Math.max(1, Math.min(activeDevices / 5 + 1, maxTimeSliceCount));
         
         // 根据CPU负载调整
         if (cpuLoad > 0.8) {
             // 高负载时增加片数，降低每片任务数
-            baseSlices = Math.min(MAX_TIME_SLICE_COUNT, baseSlices + 2);
+            baseSlices = Math.min(maxTimeSliceCount, baseSlices + 2);
         } else if (cpuLoad < 0.3) {
             // 低负载时减少片数，增加每片任务数
             baseSlices = Math.max(2, baseSlices - 1);
@@ -933,20 +955,43 @@ public class CollectionScheduler {
     /**
      * 计算最优时间片间隔
      */
-    private int calculateOptimalSliceInterval(int sliceCount, double cpuLoad) {
-        // 基础间隔：根据片数计算，保证总调度周期约为1秒
-        int baseInterval = Math.max(MIN_TIME_SLICE_INTERVAL, 1000 / sliceCount);
-        
-        // 根据CPU负载调整
-        if (cpuLoad > 0.7) {
-            // 高负载时增加间隔，减少调度频率
-            baseInterval = Math.min(baseInterval * 2, DEFAULT_TIME_SLICE_INTERVAL * 2);
-        } else if (cpuLoad < 0.4) {
-            // 低负载时减少间隔，提高调度频率
-            baseInterval = Math.max(MIN_TIME_SLICE_INTERVAL, baseInterval / 2);
+    private int calculateOptimalSliceInterval(int sliceCount, double cpuLoad, long avgExecution) {
+        int currentInterval = TIME_SLICE_INTERVAL.get();
+        int targetInterval = currentInterval;
+
+        if (avgExecution <= 0) {
+            targetInterval = Math.max(minTimeSliceInterval, initialTimeSliceInterval);
+        } else {
+            long threshold = (long) (currentInterval * 0.9);
+            if (avgExecution >= threshold) {
+                // 执行时间逼近甚至超过窗口，主动拉长间隔
+                targetInterval = Math.min(
+                        (int) Math.max(avgExecution * 1.2, currentInterval + 100),
+                        defaultTimeSliceInterval * 2
+                );
+            } else if (avgExecution < currentInterval * 0.5 && cpuLoad < 0.5) {
+                // 执行余量充足，适当缩短
+                targetInterval = Math.max(minTimeSliceInterval, currentInterval / 2);
+            }
         }
-        
-        return baseInterval;
+
+        if (cpuLoad > 0.8) {
+            targetInterval = Math.min(defaultTimeSliceInterval * 2, targetInterval + 200);
+        } else if (cpuLoad < 0.3 && avgExecution < targetInterval) {
+            targetInterval = Math.max(minTimeSliceInterval, targetInterval - 100);
+        }
+
+        // 平滑调整，避免每次跳跃过大
+        int maxStep = Math.max(100, currentInterval / 3);
+        if (targetInterval > currentInterval + maxStep) {
+            targetInterval = currentInterval + maxStep;
+        } else if (targetInterval < currentInterval - maxStep) {
+            targetInterval = currentInterval - maxStep;
+        }
+
+        targetInterval = Math.max(minTimeSliceInterval, targetInterval);
+        targetInterval = Math.min(defaultTimeSliceInterval * 2, targetInterval);
+        return targetInterval;
     }
     
     /**
@@ -1332,6 +1377,21 @@ public class CollectionScheduler {
                 return perf.getStatistics();
             }
             return Collections.emptyMap();
+        }
+
+        long getAverageTimeSliceExecution() {
+            if (timeSliceExecutionTimes.isEmpty()) {
+                return 0;
+            }
+            long sum = 0;
+            int count = 0;
+            for (Long value : timeSliceExecutionTimes.values()) {
+                if (value != null && value > 0) {
+                    sum += value;
+                    count++;
+                }
+            }
+            return count == 0 ? 0 : sum / count;
         }
     }
 

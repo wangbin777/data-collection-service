@@ -600,7 +600,7 @@ public abstract class AbstractReportHandler implements ReportHandler {
         if (data.getPointCode() == null || data.getPointCode().isEmpty()) {
             throw new IllegalArgumentException("点位编码不能为空");
         }
-        if (data.getValue() == null) {
+        if (data.getProperties() == null) {
             throw new IllegalArgumentException("数据值不能为null");
         }
 

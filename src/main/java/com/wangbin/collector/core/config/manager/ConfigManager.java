@@ -5,6 +5,7 @@ import com.wangbin.collector.common.domain.entity.ConnectionInfo;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
+import com.wangbin.collector.core.report.validator.FieldUniquenessValidator;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +59,9 @@ public class ConfigManager {
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
+
+    @Autowired
+    private FieldUniquenessValidator fieldUniquenessValidator;
 
     /**
      * 初始化方法
@@ -323,6 +327,10 @@ public class ConfigManager {
             if (!deviceCache.containsKey(deviceId)) {
                 log.warn("设备不存在，无法更新数据点: {}", deviceId);
                 return false;
+            }
+
+            if (fieldUniquenessValidator != null) {
+                fieldUniquenessValidator.validate(deviceId, points);
             }
 
             pointCache.put(deviceId, new ArrayList<>(points));

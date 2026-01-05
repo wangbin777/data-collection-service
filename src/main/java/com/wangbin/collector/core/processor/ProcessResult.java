@@ -49,6 +49,8 @@ public class ProcessResult implements Serializable {
     private String errorCode;
 
     // 附加数据
+    //如果你想触发事件（比如采集逻辑发现某个错误），就可以在 ProcessResult 的 metadata
+    // 里提前塞入 eventTriggered=true、eventType、eventMessage 等字段，shadowManager 会识别并生成事件上报
     private Map<String, Object> metadata = new HashMap<>();
 
     public ProcessResult() {

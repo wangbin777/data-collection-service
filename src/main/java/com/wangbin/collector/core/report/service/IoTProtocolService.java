@@ -83,7 +83,17 @@ public class IoTProtocolService {
             default:
                 PropertyMessage propertyMessage = new PropertyMessage();
                 Map<String, Object> propertyParams = new HashMap<>();
-                propertyParams.put(data.getPointCode(), data.getValue());
+                if (data.hasProperties()) {
+                    propertyParams.putAll(data.getProperties());
+                    if (!data.getPropertyQuality().isEmpty()) {
+                        propertyMessage.addParam("quality", data.getPropertyQuality());
+                    }
+                    if (!data.getPropertyTs().isEmpty()) {
+                        propertyMessage.addParam("propertyTs", data.getPropertyTs());
+                    }
+                } else {
+                    propertyParams.put(data.getPointCode(), data.getValue());
+                }
                 propertyMessage.setParams(propertyParams);
                 message = propertyMessage;
                 break;

@@ -33,7 +33,7 @@ public class ReportProperties {
     /**
      * 调度间隔（毫秒）
      */
-    private long interval = 1000;
+    private long intervalMs = 10000;
 
     /**
      * 上报超时（毫秒）
@@ -54,6 +54,36 @@ public class ReportProperties {
      * 刷新间隔（毫秒）
      */
     private long flushInterval = 1000;
+
+    /**
+     * 最小上报间隔（用于变化触发）
+     */
+    private long minReportIntervalMs = 2000;
+
+    /**
+     * 事件/告警触发默认最小间隔
+     */
+    private long eventMinIntervalMs = 5000;
+
+    /**
+     * 网关每秒最大发包数量（0 表示不限）
+     */
+    private int maxGatewayMessagesPerSecond = 200;
+
+    /**
+     * 单个快照消息包含的最大属性数量
+     */
+    private int maxPropertiesPerMessage = 200;
+
+    /**
+     * 单个快照消息允许的最大载荷字节数（粗略估算，0 表示不限制）
+     */
+    private int maxPayloadBytes = 128 * 1024;
+
+    /**
+     * 上报数据结构版本
+     */
+    private int schemaVersion = 2;
 
     /**
      * MQTT 相关配置

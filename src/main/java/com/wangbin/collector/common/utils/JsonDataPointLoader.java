@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -183,20 +184,22 @@ public class JsonDataPointLoader {
 
                 if (map.containsKey("remark")) point.setRemark((String) map.get("remark"));
 
-                Map<String, Object> additional = point.getAdditionalConfig() != null
-                        ? new java.util.HashMap<>(point.getAdditionalConfig())
-                        : new java.util.HashMap<>();
-
-                if (map.containsKey("commonAddress")) {
-                    additional.put("commonAddress", map.get("commonAddress"));
+                Map<String, Object> additional = new HashMap<>();
+                if (map.containsKey("additionalConfig")) {
+                    Object extra = map.get("additionalConfig");
+                    if (extra instanceof String str) {
+                        String trimmed = str.trim();
+                        if (!trimmed.isEmpty() && !"null".equalsIgnoreCase(trimmed)) {
+                            additional.putAll(objectMapper.readValue(trimmed, new TypeReference<Map<String, Object>>() {}));
+                        }
+                    } else if (extra instanceof Map<?, ?> extraMap) {
+                        for (Map.Entry<?, ?> entry : extraMap.entrySet()) {
+                            if (entry.getKey() != null) {
+                                additional.put(String.valueOf(entry.getKey()), entry.getValue());
+                            }
+                        }
+                    }
                 }
-                if (map.containsKey("registerType")) {
-                    additional.put("registerType", map.get("registerType"));
-                }
-                if (map.containsKey("defaultValue")) {
-                    additional.put("defaultValue", map.get("defaultValue"));
-                }
-
                 if (!additional.isEmpty()) {
                     point.setAdditionalConfig(additional);
                 }

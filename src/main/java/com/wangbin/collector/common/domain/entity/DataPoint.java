@@ -41,7 +41,7 @@ public class DataPoint {
     private String pointName;
 
     /**
-     * 数据点别名（可选，用于显示）
+     * 数据点别名（可选，用于显示/上报字段）
      */
     private String pointAlias;
 
@@ -324,6 +324,176 @@ public class DataPoint {
      */
     public String getFullIdentifier() {
         return deviceId + "." + pointCode;
+    }
+
+    /**
+     * 是否因字段冲突被降级为 raw-only
+     */
+    private boolean reportFieldConflict;
+
+    private transient Boolean configuredReportEnabled;
+    private transient String configuredReportField;
+    private transient Double configuredChangeThreshold;
+    private transient Long configuredChangeMinIntervalMs;
+    private transient Boolean configuredEventEnabled;
+    private transient Long configuredEventMinIntervalMs;
+    private transient boolean reportConfigParsed;
+    private transient Map<String, Object> parsedAdditionalConfigRef;
+    private transient int parsedAdditionalConfigHash;
+
+    public void setAdditionalConfig(Map<String, Object> additionalConfig) {
+        this.additionalConfig = additionalConfig;
+        resetReportConfig();
+    }
+
+    private void resetReportConfig() {
+        configuredReportEnabled = null;
+        configuredReportField = null;
+        configuredChangeThreshold = null;
+        configuredChangeMinIntervalMs = null;
+        configuredEventEnabled = null;
+        configuredEventMinIntervalMs = null;
+        reportConfigParsed = false;
+        parsedAdditionalConfigRef = null;
+        parsedAdditionalConfigHash = 0;
+    }
+
+    private void ensureReportConfigParsed() {
+        int currentHash = additionalConfig != null ? additionalConfig.hashCode() : 0;
+        if (reportConfigParsed
+                && parsedAdditionalConfigRef == additionalConfig
+                && parsedAdditionalConfigHash == currentHash) {
+            return;
+        }
+        if (additionalConfig != null) {
+            configuredReportEnabled = parseBoolean(additionalConfig.get("reportEnabled"));
+            configuredReportField = parseString(additionalConfig.get("reportField"));
+            configuredChangeThreshold = parseDouble(additionalConfig.get("changeThreshold"));
+            configuredChangeMinIntervalMs = parseLong(additionalConfig.get("changeMinIntervalMs"));
+            configuredEventEnabled = parseBoolean(additionalConfig.get("eventEnabled"));
+            configuredEventMinIntervalMs = parseLong(additionalConfig.get("eventMinIntervalMs"));
+        }
+        reportConfigParsed = true;
+        parsedAdditionalConfigRef = additionalConfig;
+        parsedAdditionalConfigHash = currentHash;
+    }
+
+    /**
+     * 获取用于上报云端的字段名
+     * @return reportField 配置 > pointAlias > null
+     */
+    public String getReportField() {
+        ensureReportConfigParsed();
+        String configured = configuredReportField;
+        if (configured != null && !configured.isEmpty()) {
+            return configured;
+        }
+        if (pointAlias == null) {
+            return null;
+        }
+        String trimmed = pointAlias.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /**
+     * 是否参与设备级上报
+     */
+    public boolean isReportEnabled() {
+        if (reportFieldConflict) {
+            return false;
+        }
+        ensureReportConfigParsed();
+        if (!Boolean.TRUE.equals(configuredReportEnabled)) {
+            return false;
+        }
+        return getReportField() != null;
+    }
+
+    public boolean isChangeTriggerEnabled() {
+        return isReportEnabled() && getChangeThreshold() != null;
+    }
+
+    public Double getChangeThreshold() {
+        ensureReportConfigParsed();
+        return configuredChangeThreshold;
+    }
+
+    public long getChangeMinIntervalMs(long defaultValue) {
+        ensureReportConfigParsed();
+        Long parsed = configuredChangeMinIntervalMs;
+        return parsed != null && parsed > 0 ? parsed : defaultValue;
+    }
+
+    public boolean isEventReportingEnabled() {
+        ensureReportConfigParsed();
+        if (configuredEventEnabled != null) {
+            return configuredEventEnabled;
+        }
+        return true;
+    }
+
+    public long getEventMinIntervalMs(long defaultValue) {
+        ensureReportConfigParsed();
+        Long parsed = configuredEventMinIntervalMs;
+        return parsed != null && parsed > 0 ? parsed : defaultValue;
+    }
+
+    private Boolean parseBoolean(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        return Boolean.parseBoolean(text);
+    }
+
+    private Double parseDouble(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        try {
+            String text = String.valueOf(value).trim();
+            if (text.isEmpty()) {
+                return null;
+            }
+            return Double.parseDouble(text);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Long parseLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            String text = String.valueOf(value).trim();
+            if (text.isEmpty()) {
+                return null;
+            }
+            return Long.parseLong(text);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private String parseString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? null : text;
     }
 
     /**
