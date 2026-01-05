@@ -95,6 +95,19 @@ public class IoTProtocolService {
                     propertyParams.put(data.getPointCode(), data.getValue());
                 }
                 propertyMessage.setParams(propertyParams);
+                propertyMessage.setDeviceId(data.getDeviceId());
+                propertyMessage.setTimestamp(data.getTimestamp());
+                propertyMessage.setMetadata(new HashMap<>(data.getMetadata()));
+                if (!data.getPropertyQuality().isEmpty()) {
+                    propertyMessage.getQualityMap().putAll(data.getPropertyQuality());
+                }
+                if (!data.getPropertyTs().isEmpty()) {
+                    propertyMessage.getPropertyTsMap().putAll(data.getPropertyTs());
+                }
+                String batchId = data.getBatchId();
+                if (batchId != null) {
+                    propertyMessage.setMessageId(batchId);
+                }
                 message = propertyMessage;
                 break;
         }
@@ -105,9 +118,14 @@ public class IoTProtocolService {
         message.setClientId(productKey + "." + deviceName);
         message.setUsername(deviceName + "&" + productKey);
         message.setTimestamp(data.getTimestamp());
+        if (message.getDeviceId() == null) {
+            message.setDeviceId(data.getDeviceId());
+        }
 
         // 设置消息ID
-        message.setMessageId(generateMessageId());
+        if (message.getMessageId() == null) {
+            message.setMessageId(generateMessageId());
+        }
 
         // 从认证信息中获取密码（如果有）
         String password = (String) authInfo.get(MessageConstant.FIELD_PASSWORD);

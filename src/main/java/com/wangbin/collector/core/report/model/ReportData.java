@@ -127,6 +127,11 @@ public class ReportData {
         metadata.put("chunkTotal", chunkTotal);
     }
 
+    public String getBatchId() {
+        Object id = metadata.get("batchId");
+        return id != null ? String.valueOf(id) : null;
+    }
+
     public static ReportData buildReportData(String deviceId, String method, DataPoint point, Object cacheValue) {
         Object value = extractValue(cacheValue);
         if (value == null) {

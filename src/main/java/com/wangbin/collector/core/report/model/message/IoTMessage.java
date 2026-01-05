@@ -13,12 +13,16 @@ public class IoTMessage {
     private String messageId;
     private String version = MessageConstant.MESSAGE_VERSION_1_0;
     private String method; // 消息类型: thing.property.post 等
+    private String deviceId;
     private String productKey;
     private String deviceName;
     private String clientId;
     private String username;
     private String password;
     private Map<String, Object> params = new HashMap<>();
+    private Map<String, Object> metadata = new HashMap<>();
+    private Map<String, String> qualityMap = new HashMap<>();
+    private Map<String, Long> propertyTsMap = new HashMap<>();
     private long timestamp;
 
     // 是否为认证消息
@@ -52,5 +56,19 @@ public class IoTMessage {
     // 获取参数
     public Object getParam(String key) {
         return params != null ? params.get(key) : null;
+    }
+
+    public void addQuality(String field, String value) {
+        if (qualityMap == null) {
+            qualityMap = new HashMap<>();
+        }
+        qualityMap.put(field, value);
+    }
+
+    public void addPropertyTimestamp(String field, Long value) {
+        if (propertyTsMap == null) {
+            propertyTsMap = new HashMap<>();
+        }
+        propertyTsMap.put(field, value);
     }
 }

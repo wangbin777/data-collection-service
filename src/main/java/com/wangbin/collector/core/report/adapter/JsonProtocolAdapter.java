@@ -39,9 +39,22 @@ public class JsonProtocolAdapter {
                 jsonMap.put("params", params);
             } else {
                 // 业务消息格式
+                jsonMap = new java.util.LinkedHashMap<>();
+                jsonMap.put("id", message.getMessageId());
                 jsonMap.put("version", message.getVersion());
                 jsonMap.put("method", message.getMethod());
+                jsonMap.put("deviceId", message.getDeviceId());
+                jsonMap.put("timestamp", message.getTimestamp());
                 jsonMap.put("params", message.getParams());
+                if (message.getQualityMap() != null && !message.getQualityMap().isEmpty()) {
+                    jsonMap.put("quality", message.getQualityMap());
+                }
+                if (message.getPropertyTsMap() != null && !message.getPropertyTsMap().isEmpty()) {
+                    jsonMap.put("propertyTs", message.getPropertyTsMap());
+                }
+                if (message.getMetadata() != null && !message.getMetadata().isEmpty()) {
+                    jsonMap.put("metadata", message.getMetadata());
+                }
             }
 
             return objectMapper.writeValueAsString(jsonMap);

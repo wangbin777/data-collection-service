@@ -433,32 +433,34 @@ public class MqttReportHandler extends AbstractReportHandler {
     }
 
     private byte[] buildJsonPayload(ReportData data, ReportConfig config) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("deviceId", data.getDeviceId());
-        payload.put("timestamp", data.getTimestamp());
-
-        if (data.hasProperties()) {
-            payload.put("properties", data.getProperties());
-            if (!data.getPropertyQuality().isEmpty()) {
-                payload.put("quality", data.getPropertyQuality());
-            }
-            if (!data.getPropertyTs().isEmpty()) {
-                payload.put("propertyTs", data.getPropertyTs());
-            }
-        } else if (data.getPointCode() != null) {
-            Map<String, Object> single = new HashMap<>();
-            single.put(data.getPointCode(), data.getValue());
-            payload.put("properties", single);
-        }
-
-        if (data.getMetadata() != null && !data.getMetadata().isEmpty()) {
-            payload.put("metadata", data.getMetadata());
-        }
-
         Map<String, Object> jsonData = new LinkedHashMap<>();
+        String messageId = data.getBatchId();
+        if (messageId == null) {
+            messageId = UUID.randomUUID().toString();
+        }
+        jsonData.put("id", messageId);
         jsonData.put("version", MessageConstant.MESSAGE_VERSION_1_0);
         jsonData.put("method", data.getMethod());
-        jsonData.put("params", payload);
+        jsonData.put("deviceId", data.getDeviceId());
+        jsonData.put("timestamp", data.getTimestamp());
+
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (data.hasProperties()) {
+            params.putAll(data.getProperties());
+        } else if (data.getPointCode() != null) {
+            params.put(data.getPointCode(), data.getValue());
+        }
+        jsonData.put("params", params);
+
+        if (!data.getPropertyQuality().isEmpty()) {
+            jsonData.put("quality", data.getPropertyQuality());
+        }
+        if (!data.getPropertyTs().isEmpty()) {
+            jsonData.put("propertyTs", data.getPropertyTs());
+        }
+        if (data.getMetadata() != null && !data.getMetadata().isEmpty()) {
+            jsonData.put("metadata", data.getMetadata());
+        }
 
         String jsonString = simpleJsonEncode(jsonData);
         return jsonString.getBytes(java.nio.charset.StandardCharsets.UTF_8);
