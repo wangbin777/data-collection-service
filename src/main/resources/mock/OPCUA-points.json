@@ -20014,7 +20014,12 @@
     "readWrite": "RW",
     "collectionMode": "POLLING",
     "additionalConfig": {
-      "opcUaType": "DOUBLE"
+      "reportEnabled": true,
+      "reportField": "os299",
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -20022,14 +20027,16 @@
     "pointName": "Motor Command 299",
     "deviceId": "OPCUA_DEVICE_001",
     "address": "ns=3;i=1300",
-    "dataType": "BOOLEAN",
+    "dataType": "DOUBLE",
     "readWrite": "RW",
     "collectionMode": "SUBSCRIPTION",
     "additionalConfig": {
-      "opcUaType": "BOOLEAN",
-      "subscribe": true,
-      "samplingInterval": 1000,
-      "queueSize": 3
+      "reportEnabled": true,
+      "reportField": "oc299",
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -20041,8 +20048,12 @@
     "readWrite": "R",
     "collectionMode": "POLLING",
     "additionalConfig": {
-      "opcUaType": "DOUBLE",
-      "deadband": 0.2
+      "reportEnabled": true,
+      "reportField": "ot300",
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -20050,11 +20061,16 @@
     "pointName": "Demo Pressure 300",
     "deviceId": "OPCUA_DEVICE_001",
     "address": "ns=3;i=1304",
-    "dataType": "FLOAT",
+    "dataType": "DOUBLE",
     "readWrite": "R",
     "collectionMode": "POLLING",
     "additionalConfig": {
-      "opcUaType": "FLOAT"
+      "reportEnabled": true,
+      "reportField": "op300",
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -20062,14 +20078,16 @@
     "pointName": "Motor State 300",
     "deviceId": "OPCUA_DEVICE_001",
     "address": "ns=3;i=1303",
-    "dataType": "BOOLEAN",
+    "dataType": "DOUBLE",
     "readWrite": "RW",
     "collectionMode": "SUBSCRIPTION",
     "additionalConfig": {
-      "opcUaType": "BOOLEAN",
-      "subscribe": true,
-      "samplingInterval": 500,
-      "queueSize": 5
+      "reportEnabled": true,
+      "reportField": "oms300",
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -20081,7 +20099,12 @@
     "readWrite": "RW",
     "collectionMode": "POLLING",
     "additionalConfig": {
-      "opcUaType": "DOUBLE"
+      "reportEnabled": true,
+      "reportField": "os300",
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -20097,7 +20120,7 @@
     "unit": "℃",
     "additionalConfig": {
       "reportEnabled": true,
-      "reportField": "opcua_command_300",
+      "reportField": "oc300",
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,

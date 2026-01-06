@@ -1,15 +1,8 @@
-# ============================================
-# 应用基础配置
-# ============================================
 spring:
   application:
     name: data-collection-service
-
-  # 多环境配置
   profiles:
     active: dev
-
-  # 数据源配置
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/data_collection?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
@@ -21,15 +14,13 @@ spring:
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
-
-  # Redis 认证配置（新方式）
   data:
     redis:
       host: 43.138.73.155
       port: 6739
       database: 0
       timeout: 3000
-      password: wangbin@123  # 如果有密码的话
+      password: wangbin@123
       lettuce:
         pool:
           max-active: 20
@@ -37,22 +28,11 @@ spring:
           min-idle: 5
           max-wait: -1
         shutdown-timeout: 100ms
-
-
-  # WebSocket配置
-  websocket:
-    enabled: true
-    path: /ws/realtime
-    allowed-origins: "*"
-
-  # Jackson配置
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
     serialization:
       write-dates-as-timestamps: false
-
-  # 异步配置
   task:
     execution:
       pool:
@@ -62,152 +42,49 @@ spring:
         keep-alive: 60s
       thread-name-prefix: async-task-
 
-# ============================================
-# 采集服务核心配置
-# ============================================
 collector:
-  #采集定时配置
   scheduler:
-    # 初始时间片数量 - 启动时创建的时间片线程数
-    # 每个时间片对应一个数据收集线程，用于并行采集不同设备
     initial-time-slice-count: 4
-    # 最大时间片数量 - 系统允许的最大并发收集线程数
-    # 当采集任务增多时，系统会动态增加时间片数量，但不能超过此值
     max-time-slice-count: 12
-    # 最小时间片间隔（毫秒）- 同一个时间片处理两个任务的最小间隔
-    # 防止CPU过度使用，确保系统不会过于频繁地调度任务
     min-time-slice-interval-ms: 300
-    # 初始时间片间隔（毫秒）- 时间片线程默认的执行间隔
-    # 控制数据采集的频率，值越小采集越频繁，但CPU使用率越高
-    initial-time-slice-interval-ms: 1500
-    # 默认时间片间隔（毫秒）- 时间片线程默认的执行间隔
-    # 控制数据采集的频率，值越小采集越频繁，但CPU使用率越高
     default-time-slice-interval-ms: 1500
-    # 动态调整间隔（毫秒）- 系统重新评估和调整时间片数量的间隔
-    # 系统会定期检查负载情况，动态增减时间片数量以优化性能
-    dynamic-adjust-interval-ms: 60000  # 1分钟
-    # 采集超时时间（毫秒）- 单个采集任务的最大执行时间
-    # 如果某个设备采集超过此时间，会被中断以防止阻塞其他采集任务
+    initial-time-slice-interval-ms: 1500
+    dynamic-adjust-interval-ms: 60000
     collect-timeout-ms: 800
-  # 服务配置
-  service:
-    id: collector-1
-    name: 数据采集服务
-    version: 1.0.0
-    description: 工业数据采集服务
-    port: 9090
 
-  # 配置管理
   config:
     ruoyi-url: http://localhost:8080
-    sync-interval: 30000  # 配置同步间隔(毫秒)
-    cache-enabled: true
-    cache-ttl: 300000  # 配置缓存TTL(毫秒)
+    sync-interval: 30000
+    service-id: collector-1
+    api-token: ""
 
-  # 连接管理配置
-  connection:
-    max-connections: 1000
-    connect-timeout: 5000
-    read-timeout: 10000
-    write-timeout: 5000
-
-    # 连接池配置
-    pool:
-      max-size: 100
-      min-idle: 5
-      max-idle: 20
-      max-wait: 3000
-
-    # 心跳配置
-    heartbeat:
-      enabled: true
-      interval: 30000  # 心跳间隔(毫秒)
-      timeout: 10000   # 心跳超时(毫秒)
-
-    # 重连配置
-    reconnect:
-      enabled: true
-      delay: 5000
-      max-retries: 3
-      backoff-multiplier: 1.5
-
-  # 数据采集配置
-  collection:
-    default-frequency: 1000
-    batch-size: 50     # 批量采集大小
-    timeout: 5000      # 采集超时(毫秒)
-    max-retry-times: 3 # 采集重试次数
-    retry-delay: 1000
-    queue-capacity: 10000
-
-    # 线程池配置
-    thread-pool:
-      core-size: 20
-      max-size: 100
-      queue-capacity: 1000
-      keep-alive: 60
-
-  # 数据缓存配置
   cache:
-    type: local  # 或 redis
-    # 本地缓存配置
+    type: local
     local:
-      enabled: true
-      ttl: 30           # 本地缓存TTL(秒)
       max-size: 10000
+      expire-after-write: 300
+      expire-after-access: 60
       initial-capacity: 1000
-      expire-after-write: 300   # 秒
-      expire-after-access: 60   # 秒
-
-    # Redis缓存配置
     redis:
-      enabled: true
       key-prefix: "collector:cache:"
-      ttl: 3600        # Redis缓存TTL(秒)
-      connection-timeout: 3000  # 毫秒
+      default-expire: 3600
+      connection-timeout: 3000
 
-    # 多级缓存配置
-    multi-level:
-      enabled: true
-      write-through: true
-      read-through: true
-      cache-aside: true
-      max-level: 2
-
-    # 实时数据缓存
-    realtime-ttl: 300
-    max-cache-size: 10000
-
-  # 数据上报配置
   report:
     enabled: true
-    mode: mqtt   # websocket/http/mqtt/tcp
-    batch-size: 100   # 批量上报大小
-    intervalMs: 1000    # 上报间隔(毫秒)
-    timeout: 3000     # 上报超时(毫秒)
-    retry-times: 3    # 上报重试次数
+    mode: mqtt
+    batch-size: 100
+    intervalMs: 1000
+    timeout: 3000
+    retry-times: 3
     max-queue-size: 5000
     flush-interval: 1000
-
-    # WebSocket上报配置
-    websocket:
-      url: ws://localhost:8080/ws/realtime
-      reconnection-enabled: true
-      reconnection-interval: 5000
-
-    # HTTP上报配置
-    http:
-      url: http://localhost:8080/api/collector/data/report
-      content-type: application/json
-      auth-type: token
-
-    # MQTT上报配置
     mqtt:
-     # broker-url: tcp://localhost:1883
-      broker-url: mqtt://broker.emqx.io:1883
+      enabled: true
+      broker-url: tcp://localhost:1883
       client-id: byxuTQjqn6TCDwJ0.collector-1
-      #username: collector-1&byxuTQjqn6TCDwJ0
-      #password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
+      username: collector-1&byxuTQjqn6TCDwJ0
+      password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
       qos: 1
       clean-session: true
       connection-timeout: 30
@@ -217,151 +94,50 @@ collector:
         event: thing/event/post
         state: thing/state/update
 
-  # 协议配置
-  protocol:
-    # Modbus协议配置
-    modbus:
-      timeout: 3000
-      retries: 2
-      pool-size: 10
+  modbus:
+    timeout: 3000
+    retries: 2
+    pool-size: 10
 
-    # OPC UA协议配置
-    opcua:
-      security-policy: None
-      message-mode: Binary
-      request-timeout: 5000
-      subscription-interval: 1000
-      endpoints:
-        server1: opc.tcp://localhost:4840
-        server2: opc.tcp://192.168.1.200:4840
+  opc-ua:
+    security-policy: None
+    message-mode: Binary
+    request-timeout: 5000
+    subscription-interval: 1000
+    endpoints:
+      server1: opc.tcp://localhost:4840
+      server2: opc.tcp://192.168.1.200:4840
 
-    iec104:
-      timeout: 5000
-      retries: 3
-      common-address: 1
-      general-interrogation-on-connect: true
-      general-interrogation-interval: 600000
-      single-interrogation-on-read-miss: true
-      single-interrogation-group-field: groupId
-      cache-ttl: 5000
+  iec104:
+    timeout: 5000
+    retries: 3
+    common-address: 1
+    general-interrogation-on-connect: true
+    general-interrogation-interval: 600000
+    single-interrogation-on-read-miss: true
+    single-interrogation-group-field: groupId
+    cache-ttl: 5000
 
-    # SNMP协议配置
-    snmp:
-      community: public
-      timeout: 3000
-      retries: 2
-      version: 2c
-      polling-interval: 5000
-      devices:
-        device1: 192.168.1.100
-        device2: 192.168.1.101
+  snmp:
+    community: public
+    timeout: 3000
+    retries: 2
+    version: 2c
+    polling-interval: 5000
+    devices:
+      device1: 192.168.1.100
+      device2: 192.168.1.101
 
-    # MQTT采集配置
-    mqtt:
-      broker-url: tcp://localhost:1883
-      client-id: data-collector
-      username: admin
-      password: password
-      qos: 1
-      clean-session: true
-      connection-timeout: 30
-      keep-alive-interval: 60
+  mqtt:
+    broker-url: tcp://localhost:1883
+    client-id: data-collector
+    username: admin
+    password: password
+    qos: 1
+    clean-session: true
+    connection-timeout: 30
+    keep-alive-interval: 60
 
-  # 数据处理器配置
-  processors:
-    # 数据计算器配置
-    data-calculator:
-      enabled: true
-      enable-simple-calculations: true
-      enable-statistical-calculations: false  # 实时场景通常不需要
-      enable-aggregation-calculations: true
-      enable-rate-calculations: true
-      default-window-size: 10
-      max-state-retention-time: 300000  # 5分钟
-
-    # 公式计算器配置
-    formula-calculator:
-      enabled: true
-      cache-expressions: true
-      enable-formula-calculation: true
-      enable-context-variables: true
-      default-formula: ""
-
-    # 预定义函数
-    predefined-functions:
-      - name: "calculateEfficiency"
-        script: "(input, output) { return (output / input) * 100; }"
-      - name: "calculateDewPoint"
-        script: "(temp, humidity) { var a = 17.27; var b = 237.7; var alpha = ((a * temp) / (b + temp)) + Math.log(humidity / 100); return (b * alpha) / (a - alpha); }"
-
-    # 数据点计算配置示例
-    data-point-calculations:
-      # 温度传感器
-      TEMP001:
-        scaling-factor: 0.1
-        offset: 0.0
-        unit: "°C"
-        precision: 1
-
-      # 压力传感器
-      PRESS001:
-        scaling-factor: 0.01  # kPa转bar
-        unit: "bar"
-        precision: 2
-
-      # 流量计算
-      FLOW001:
-        calculation-formula: "value * 3600"  # 秒流量转小时流量
-
-      # 效率计算
-      EFF001:
-        calculation-formula: "(outputPower / inputPower) * 100"
-
-  # 监控配置
-  monitor:
-    enabled: true
-    metrics-interval: 60000
-    alert-enabled: true
-    log-enabled: true
-
-    # 监控指标
-    metrics:
-      enabled: true
-      export:
-        influx:
-          enabled: false
-          uri: http://localhost:8086
-          db: collector_metrics
-        prometheus:
-          enabled: true
-          endpoint: /actuator/prometheus
-
-    # 告警规则
-    alert:
-      enabled: true
-      rules:
-        - type: connection
-          level: ERROR
-          threshold: 0.8  # 连接失败率阈值
-        - type: collection
-          level: WARN
-          threshold: 0.9  # 采集失败率阈值
-        - type: system
-          level: ERROR
-          threshold: 0.9  # 系统资源使用率阈值
-
-  # 通用配置
-  common:
-    heartbeat-interval: 30000
-    reconnect-interval: 5000
-    max-reconnect-times: 3
-    data-cache-size: 10000
-    enable-monitor: true
-    enable-alert: true
-
-# ============================================
-# MyBatis配置
-# ============================================
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.wangbin.collector.common.domain.entity
@@ -369,9 +145,6 @@ mybatis:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
-# ============================================
-# 日志配置
-# ============================================
 logging:
   level:
     com.wangbin.collector: INFO
@@ -385,33 +158,21 @@ logging:
     max-size: 10MB
     max-history: 30
 
-# ============================================
-# 服务器配置
-# ============================================
 server:
   port: 9090
   servlet:
     context-path: /collector
-
-  # 优雅停机配置
   shutdown: graceful
-
-  # 压缩配置
   compression:
     enabled: true
     mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
     min-response-size: 2048
-
-  # Tomcat配置
   tomcat:
     max-threads: 200
     min-spare-threads: 20
     connection-timeout: 5000
     accept-count: 100
 
-# ============================================
-# 管理端点配置
-# ============================================
 management:
   endpoints:
     web:
