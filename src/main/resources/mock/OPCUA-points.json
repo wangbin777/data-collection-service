@@ -19983,11 +19983,19 @@
     "pointName": "Demo Pressure 299",
     "deviceId": "OPCUA_DEVICE_001",
     "address": "ns=3;i=1303",
-    "dataType": "FLOAT",
+    "dataType": "DOUBLE",
     "readWrite": "R",
     "collectionMode": "POLLING",
     "additionalConfig": {
-      "opcUaType": "FLOAT"
+      "reportEnabled": true,
+      "reportField": "op299",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"}
+      ],
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -19995,14 +20003,19 @@
     "pointName": "Motor State 299",
     "deviceId": "OPCUA_DEVICE_001",
     "address": "ns=3;i=1302",
-    "dataType": "BOOLEAN",
+    "dataType": "DOUBLE",
     "readWrite": "RW",
     "collectionMode": "SUBSCRIPTION",
     "additionalConfig": {
-      "opcUaType": "BOOLEAN",
-      "subscribe": true,
-      "samplingInterval": 500,
-      "queueSize": 5
+      "reportEnabled": true,
+      "reportField": "oms299",
+      "reportBindings": [
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
+      "changeThreshold": 0.01,
+      "changeMinIntervalMs": 1000,
+      "eventEnabled": false,
+      "eventMinIntervalMs": 5000
     }
   },
   { "status":1,"cacheEnabled":1,
@@ -20016,6 +20029,10 @@
     "additionalConfig": {
       "reportEnabled": true,
       "reportField": "os299",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"},
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,
@@ -20033,6 +20050,10 @@
     "additionalConfig": {
       "reportEnabled": true,
       "reportField": "oc299",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"},
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,
@@ -20050,6 +20071,10 @@
     "additionalConfig": {
       "reportEnabled": true,
       "reportField": "ot300",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"},
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,
@@ -20067,6 +20092,10 @@
     "additionalConfig": {
       "reportEnabled": true,
       "reportField": "op300",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"},
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,
@@ -20084,6 +20113,10 @@
     "additionalConfig": {
       "reportEnabled": true,
       "reportField": "oms300",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"},
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,
@@ -20101,6 +20134,10 @@
     "additionalConfig": {
       "reportEnabled": true,
       "reportField": "os300",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"},
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,
@@ -20121,6 +20158,10 @@
     "additionalConfig": {
       "reportEnabled": true,
       "reportField": "oc300",
+      "reportBindings": [
+        {"deviceName": "cjzsb", "productKey": "clrkEwQYt462xDU2"},
+        {"deviceName": "cjzsb1", "productKey": "clrkEwQYt462xDU2"}
+      ],
       "changeThreshold": 0.01,
       "changeMinIntervalMs": 1000,
       "eventEnabled": false,

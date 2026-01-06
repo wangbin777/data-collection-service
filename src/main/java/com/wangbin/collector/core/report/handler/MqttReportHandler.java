@@ -388,9 +388,30 @@ public class MqttReportHandler extends AbstractReportHandler {
     }
 
     private String replaceTopicVariables(String topic, ReportData data, ReportConfig config) {
-        return topic.replace("{pointCode}", data.getPointCode())
-                .replace("{targetId}", config.getTargetId())
-                .replace("{timestamp}", String.valueOf(data.getTimestamp()));
+        String deviceName = Optional.ofNullable(data.getDeviceId()).orElse(config.getTargetId());
+        String methodPath = Optional.ofNullable(data.getMethod())
+                .map(m -> m.replace('.', '/'))
+                .orElse("");
+        Object rawDeviceId = data.getMetadata() != null ? data.getMetadata().get("rawDeviceId") : null;
+        String productKey = "";
+        if (data.getMetadata() != null && data.getMetadata().get("productKey") != null) {
+            productKey = String.valueOf(data.getMetadata().get("productKey"));
+        }
+        if (productKey.isEmpty()) {
+            Map<String, Object> params = config.getParams();
+            if (params != null && params.get("defaultProductKey") != null) {
+                productKey = String.valueOf(params.get("defaultProductKey"));
+            }
+        }
+        return topic
+                .replace("{deviceName}", deviceName != null ? deviceName : "")
+                .replace("{deviceId}", deviceName != null ? deviceName : "")
+                .replace("{pointCode}", Optional.ofNullable(data.getPointCode()).orElse(""))
+                .replace("{targetId}", Optional.ofNullable(config.getTargetId()).orElse(""))
+                .replace("{timestamp}", String.valueOf(data.getTimestamp()))
+                .replace("{method}", methodPath)
+                .replace("{productKey}", productKey != null ? productKey : "")
+                .replace("{rawDeviceId}", rawDeviceId != null ? rawDeviceId.toString() : "");
     }
 
     private int getQosLevel(ReportConfig config) {

@@ -99,6 +99,14 @@ public class ReportProperties {
         private boolean enabled = true;
         private String brokerUrl = "tcp://localhost:1883";
         private String clientId = "data-collector";
+        /**
+         * 对应云平台的产品 key，用于拼装 topic。
+         */
+        private String productKey = "";
+        /**
+         * topic 前缀，默认 iot/device。
+         */
+        private String topicPrefix = "iot/device";
         private String username;
         private String password;
         private int qos = 1;
@@ -111,11 +119,15 @@ public class ReportProperties {
          */
         private Map<String, String> topics = new HashMap<>();
 
-        public String getTopicTemplate() {
-            // 将 clientId 中的 "." 替换为 "/"
-            String formattedClientId = clientId.replace('.', '/');
-            // 返回 "iot/device/" + 格式化后的 clientId
-            return "iot/device/" + formattedClientId;
+        public String getTopicPrefix() {
+            if (topicPrefix == null || topicPrefix.isEmpty()) {
+                return "iot/device";
+            }
+            return topicPrefix.endsWith("/") ? topicPrefix.substring(0, topicPrefix.length() - 1) : topicPrefix;
+        }
+
+        public String getDefaultTopicTemplate() {
+            return getTopicPrefix() + "/{productKey}/{deviceName}/{method}";
         }
     }
 }
