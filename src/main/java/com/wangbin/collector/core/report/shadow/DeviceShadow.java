@@ -1,5 +1,9 @@
 package com.wangbin.collector.core.report.shadow;
 
+import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -9,6 +13,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * 设备影子，缓存设备最新属性值。
  */
+@Data
 public class DeviceShadow {
 
     private final String deviceId;
@@ -26,10 +31,6 @@ public class DeviceShadow {
     public DeviceShadow(String deviceId) {
         this.deviceId = deviceId;
         this.lastReportAt = System.currentTimeMillis();
-    }
-
-    public String getDeviceId() {
-        return deviceId;
     }
 
     public void update(String field, ValueMeta valueMeta) {
@@ -52,21 +53,6 @@ public class DeviceShadow {
         return sequence.incrementAndGet();
     }
 
-    public long getLastReportAt() {
-        return lastReportAt;
-    }
-
-    public void setLastReportAt(long lastReportAt) {
-        this.lastReportAt = lastReportAt;
-    }
-
-    public long getLastWindowStart() {
-        return lastWindowStart;
-    }
-
-    public long getLastWindowEnd() {
-        return lastWindowEnd;
-    }
 
     public void setLastWindow(long start, long end) {
         this.lastWindowStart = start;
