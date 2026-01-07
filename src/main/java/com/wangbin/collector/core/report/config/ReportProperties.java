@@ -4,7 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -71,6 +73,11 @@ public class ReportProperties {
     private int maxGatewayMessagesPerSecond = 200;
 
     /**
+     * 启用的上报协议列表，留空表示全部协议可用
+     */
+    private List<String> enabledProtocols = new ArrayList<>();
+
+    /**
      * 单个快照消息包含的最大属性数量
      */
     private int maxPropertiesPerMessage = 200;
@@ -91,7 +98,22 @@ public class ReportProperties {
     private final Mqtt mqtt = new Mqtt();
 
     public boolean mqttEnabled() {
-        return enabled && "MQTT".equalsIgnoreCase(mode) && mqtt.isEnabled();
+        return mqtt.isEnabled() && isProtocolEnabled("MQTT");
+    }
+
+    public boolean isProtocolEnabled(String protocol) {
+        if (!enabled || protocol == null || protocol.isEmpty()) {
+            return false;
+        }
+        if (mode != null && !mode.isBlank() && !"AUTO".equalsIgnoreCase(mode)) {
+            if (!protocol.equalsIgnoreCase(mode)) {
+                return false;
+            }
+        }
+        if (enabledProtocols.isEmpty()) {
+            return true;
+        }
+        return enabledProtocols.stream().anyMatch(item -> item.equalsIgnoreCase(protocol));
     }
 
     @Data

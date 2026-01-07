@@ -8,11 +8,15 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.*;
+import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.*;
@@ -32,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 6. 支持数据格式转换（JSON、Form、XML等）
  */
 @Slf4j
+@Component
 public class HttpReportHandler extends AbstractReportHandler {
 
     /**
@@ -360,7 +365,6 @@ public class HttpReportHandler extends AbstractReportHandler {
      */
     private void configureIgnoreSSL() {
         try {
-            // 创建信任所有证书的TrustManager
             TrustManager[] trustAllCerts = new TrustManager[] {
                     new X509TrustManager() {
                         public X509Certificate[] getAcceptedIssuers() {
@@ -373,16 +377,11 @@ public class HttpReportHandler extends AbstractReportHandler {
                     }
             };
 
-            // 创建SSL上下文
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(null, trustAllCerts, new SecureRandom());
 
-            // 创建SSL Socket Factory
-            SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
-
-            // 配置HTTP客户端工厂
             if (httpClientFactory != null) {
-                httpClientFactory.setSslSocketFactory(sslSocketFactory);
+                httpClientFactory.setSslSocketFactory(sslContext.getSocketFactory());
                 httpClientFactory.setHostnameVerifier((hostname, session) -> true);
             }
 
@@ -768,19 +767,29 @@ public class HttpReportHandler extends AbstractReportHandler {
         private HostnameVerifier hostnameVerifier;
         private ConnectionPoolConfig connectionPoolConfig;
 
-
         public RestTemplate createRestTemplate() {
-            // 简化实现，实际项目中可以使用HttpComponentsClientHttpRequestFactory
-            RestTemplate restTemplate = new RestTemplate();
-
-            // 设置超时
-            // 在实际项目中，需要配置ClientHttpRequestFactory来设置超时
-
-            return restTemplate;
+            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory() {
+                @Override
+                protected void prepareConnection(HttpURLConnection connection, String httpMethod) throws IOException {
+                    super.prepareConnection(connection, httpMethod);
+                    if (connection instanceof HttpsURLConnection https) {
+                        if (sslSocketFactory != null) {
+                            https.setSSLSocketFactory(sslSocketFactory);
+                        }
+                        if (hostnameVerifier != null) {
+                            https.setHostnameVerifier(hostnameVerifier);
+                        }
+                    }
+                }
+            };
+            factory.setConnectTimeout((int) connectTimeout);
+            factory.setReadTimeout((int) readTimeout);
+            factory.setBufferRequestBody(false);
+            return new RestTemplate(factory);
         }
 
         public void destroy() {
-            // 清理资源
+            // no-op for JDK HttpURLConnection
         }
 
         public Map<String, Object> getConnectionPoolStats() {
@@ -788,8 +797,20 @@ public class HttpReportHandler extends AbstractReportHandler {
             if (connectionPoolConfig != null) {
                 stats.put("config", connectionPoolConfig.getStatus());
             }
-            // 在实际项目中，可以从连接池获取实时统计信息
+            stats.put("provider", "HttpURLConnection-keepalive");
             return stats;
+        }
+
+        public void setConnectionPoolConfig(ConnectionPoolConfig connectionPoolConfig) {
+            this.connectionPoolConfig = connectionPoolConfig;
+        }
+
+        public void setSslSocketFactory(SSLSocketFactory sslSocketFactory) {
+            this.sslSocketFactory = sslSocketFactory;
+        }
+
+        public void setHostnameVerifier(HostnameVerifier hostnameVerifier) {
+            this.hostnameVerifier = hostnameVerifier;
         }
     }
 }

@@ -2,11 +2,8 @@
 package com.wangbin.collector.core.report.service;
 
 import com.wangbin.collector.common.constant.MessageConstant;
-import com.wangbin.collector.common.constant.ProtocolConstant;
-import com.wangbin.collector.common.domain.entity.CollectionConfig;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.enums.QualityEnum;
-import com.wangbin.collector.core.config.manager.ConfigManager;
 import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
 import com.wangbin.collector.core.processor.ProcessResult;
 import com.wangbin.collector.core.report.config.ReportProperties;
@@ -14,6 +11,9 @@ import com.wangbin.collector.core.report.model.ReportConfig;
 import com.wangbin.collector.core.report.model.ReportData;
 import com.wangbin.collector.core.report.model.ReportIdentity;
 import com.wangbin.collector.core.report.model.ReportResult;
+import com.wangbin.collector.core.report.service.support.GatewayRateLimiter;
+import com.wangbin.collector.core.report.service.support.ReportConfigProvider;
+import com.wangbin.collector.core.report.service.support.ReportIdentityResolver;
 import com.wangbin.collector.core.report.shadow.DeviceShadow;
 import com.wangbin.collector.core.report.shadow.ShadowManager;
 import com.wangbin.collector.core.report.shadow.ShadowManager.EventInfo;
@@ -23,29 +23,28 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ScheduledFuture;
+import java.time.Duration;
+import java.time.Instant;
 
 /**
  * 缓存上报服务：聚合快照/变化/事件并统一推送
@@ -56,19 +55,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class CacheReportService {
 
     private final ReportManager reportManager;
-    private final ConfigManager configManager;
     private final ReportProperties reportProperties;
     private final ShadowManager shadowManager;
+    private final ReportIdentityResolver identityResolver;
+    private final ReportConfigProvider reportConfigProvider;
+    private final GatewayRateLimiter gatewayRateLimiter;
+    @Qualifier("taskScheduler")
+    private final TaskScheduler taskScheduler;
 
-    private final ConcurrentMap<String, ReportConfig> reportConfigCache = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> identityGatewayMapping = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, String> identityProductKeys = new ConcurrentHashMap<>();
     private final Set<String> flushingDevices = ConcurrentHashMap.newKeySet();
     private final ConcurrentMap<String, FlushTracker> flushTrackers = new ConcurrentHashMap<>();
-    private final Object rateLock = new Object();
-    private ScheduledExecutorService flushExecutor;
-    private long rateWindowSecond = System.currentTimeMillis() / 1000;
-    private int rateWindowCount = 0;
+    private ScheduledFuture<?> flushTask;
 
     @PostConstruct
     public void start() {
@@ -76,18 +75,13 @@ public class CacheReportService {
             return;
         }
         long interval = Math.max(1000L, reportProperties.getIntervalMs());
-        flushExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "report-flush");
-            thread.setDaemon(true);
-            return thread;
-        });
-        flushExecutor.scheduleAtFixedRate(this::flushDirtyDevices, interval, interval, TimeUnit.MILLISECONDS);
+        flushTask = taskScheduler.scheduleAtFixedRate(this::flushDirtyDevices, Duration.ofMillis(interval));
     }
 
     @PreDestroy
     public void shutdown() {
-        if (flushExecutor != null) {
-            flushExecutor.shutdownNow();
+        if (flushTask != null) {
+            flushTask.cancel(true);
         }
     }
 
@@ -95,11 +89,11 @@ public class CacheReportService {
         if (!isMqttEnabled() || deviceId == null || point == null || cacheValue == null) {
             return;
         }
-        ProcessResult processResult = wrapProcessResult(cacheValue);
+        ProcessResult processResult = identityResolver.toProcessResult(cacheValue);
         if (processResult == null) {
             return;
         }
-        List<ReportIdentity> identities = resolveReportIdentities(deviceId, point);
+        List<ReportIdentity> identities = identityResolver.resolve(deviceId, point, defaultProductKey());
         if (identities.isEmpty()) {
             identities = List.of(new ReportIdentity(deviceId, deviceId, defaultProductKey()));
         }
@@ -117,164 +111,6 @@ public class CacheReportService {
         }
     }
 
-    private ProcessResult wrapProcessResult(Object cacheValue) {
-        if (cacheValue instanceof ProcessResult processResult) {
-            return processResult;
-        }
-        ProcessResult result = new ProcessResult();
-        result.setSuccess(true);
-        result.setRawValue(cacheValue);
-        result.setProcessedValue(cacheValue);
-        result.setQuality(QualityEnum.GOOD.getCode());
-        return result;
-    }
-
-    private List<ReportIdentity> resolveReportIdentities(String gatewayDeviceId, DataPoint point) {
-        List<ReportIdentity> fromBindings = resolveBindings(gatewayDeviceId, point);
-        if (!fromBindings.isEmpty()) {
-            return fromBindings;
-        }
-        List<ReportIdentity> fromLegacy = resolveLegacyIdentities(gatewayDeviceId, point);
-        if (!fromLegacy.isEmpty()) {
-            return fromLegacy;
-        }
-        return Collections.emptyList();
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<ReportIdentity> resolveBindings(String gatewayDeviceId, DataPoint point) {
-        if (point == null) {
-            return Collections.emptyList();
-        }
-        Object bindingsConfig = point.getAdditionalConfig("reportBindings");
-        if (bindingsConfig == null) {
-            return Collections.emptyList();
-        }
-        List<Map<String, Object>> bindings = new ArrayList<>();
-        if (bindingsConfig instanceof Collection<?> collection) {
-            for (Object item : collection) {
-                Map<String, Object> map = asMap(item);
-                if (map != null) {
-                    bindings.add(map);
-                }
-            }
-        } else if (bindingsConfig.getClass().isArray()) {
-            int len = java.lang.reflect.Array.getLength(bindingsConfig);
-            for (int i = 0; i < len; i++) {
-                Map<String, Object> map = asMap(java.lang.reflect.Array.get(bindingsConfig, i));
-                if (map != null) {
-                    bindings.add(map);
-                }
-            }
-        } else {
-            Map<String, Object> map = asMap(bindingsConfig);
-            if (map != null) {
-                bindings.add(map);
-            }
-        }
-        List<ReportIdentity> result = new ArrayList<>();
-        for (Map<String, Object> map : bindings) {
-            Object deviceName = map.get("deviceName");
-            Object pk = map.getOrDefault("productKey", map.get("reportProductKey"));
-            String name = normalizeString(deviceName);
-            if (name == null || name.isEmpty()) {
-                continue;
-            }
-            String productKey = normalizeString(pk);
-            if (productKey == null || productKey.isEmpty()) {
-                productKey = defaultProductKey();
-            }
-            result.add(new ReportIdentity(gatewayDeviceId, name, productKey));
-        }
-        return result;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> asMap(Object raw) {
-        if (raw instanceof Map<?, ?> map) {
-            Map<String, Object> result = new HashMap<>();
-            map.forEach((k, v) -> {
-                if (k != null) {
-                    result.put(String.valueOf(k), v);
-                }
-            });
-            return result;
-        }
-        return null;
-    }
-
-    private List<ReportIdentity> resolveLegacyIdentities(String gatewayDeviceId, DataPoint point) {
-        LinkedHashSet<String> deviceNames = toOrderedSet(point != null ? point.getAdditionalConfig("reportDeviceName") : null);
-        if (deviceNames.isEmpty()) {
-            return Collections.emptyList();
-        }
-        LinkedHashSet<String> productKeys = toOrderedSet(point != null
-                ? Optional.ofNullable(point.getAdditionalConfig("productKey"))
-                .orElse(point.getAdditionalConfig("reportProductKey"))
-                : null);
-        List<ReportIdentity> result = new ArrayList<>(deviceNames.size());
-        List<String> pkList = new ArrayList<>(productKeys);
-        boolean sameSize = !pkList.isEmpty() && pkList.size() == deviceNames.size();
-        String fallbackPk = pkList.isEmpty() ? defaultProductKey() : pkList.get(0);
-        int index = 0;
-        for (String name : deviceNames) {
-            if (name == null || name.isEmpty()) {
-                continue;
-            }
-            String pk = sameSize ? pkList.get(index) : fallbackPk;
-            if (pk == null || pk.isEmpty()) {
-                pk = defaultProductKey();
-            }
-            result.add(new ReportIdentity(gatewayDeviceId, name, pk));
-            index++;
-        }
-        return result;
-    }
-
-    private LinkedHashSet<String> toOrderedSet(Object configured) {
-        LinkedHashSet<String> result = new LinkedHashSet<>();
-        if (configured == null) {
-            return result;
-        }
-        if (configured instanceof Collection<?> collection) {
-            for (Object item : collection) {
-                addString(result, item);
-            }
-        } else if (configured.getClass().isArray()) {
-            int length = java.lang.reflect.Array.getLength(configured);
-            for (int i = 0; i < length; i++) {
-                addString(result, java.lang.reflect.Array.get(configured, i));
-            }
-        } else {
-            addString(result, configured);
-        }
-        return result;
-    }
-
-    private void addString(Set<String> bucket, Object raw) {
-        String normalized = normalizeString(raw);
-        if (normalized == null || normalized.isEmpty()) {
-            return;
-        }
-        if (normalized.contains(",")) {
-            for (String part : normalized.split(",")) {
-                String trimmed = part.trim();
-                if (!trimmed.isEmpty()) {
-                    bucket.add(trimmed);
-                }
-            }
-            return;
-        }
-        bucket.add(normalized);
-    }
-
-    private String normalizeString(Object raw) {
-        if (raw == null) {
-            return null;
-        }
-        String text = String.valueOf(raw).trim();
-        return text.isEmpty() ? null : text;
-    }
 
     private String defaultProductKey() {
         ReportProperties.Mqtt mqtt = reportProperties.getMqtt();
@@ -285,9 +121,6 @@ public class CacheReportService {
     }
 
     private void triggerImmediateFlush(String deviceId) {
-        if (flushExecutor == null) {
-            return;
-        }
         DeviceShadow shadow = shadowManager.getShadow(deviceId);
         if (shadow == null) {
             return;
@@ -296,7 +129,7 @@ public class CacheReportService {
         if (now - shadow.getLastReportAt() < reportProperties.getMinReportIntervalMs()) {
             return;
         }
-        flushExecutor.execute(() -> flushDevice(deviceId));
+        taskScheduler.schedule(() -> flushDevice(deviceId), Instant.now());
     }
 
     private void flushDirtyDevices() {
@@ -433,7 +266,7 @@ public class CacheReportService {
                           boolean highPriority,
                           FlushTracker tracker) {
         String chunkKey = tracker != null ? tracker.registerDispatch(data) : null;
-        if (!tryAcquireSlot(highPriority)) {
+        if (!gatewayRateLimiter.tryAcquire(highPriority)) {
             log.warn("网关限流丢弃本次上报: {} -> {}", data.getPointCode(), config.getTargetId());
             handleChunkResult(data, false, tracker, chunkKey, config, highPriority);
             return;
@@ -524,28 +357,6 @@ public class CacheReportService {
         dispatch(eventData, reportConfig, true, null);
     }
 
-    private boolean tryAcquireSlot(boolean highPriority) {
-        if (highPriority) {
-            return true;
-        }
-        int limit = reportProperties.getMaxGatewayMessagesPerSecond();
-        if (limit <= 0) {
-            return true;
-        }
-        long second = System.currentTimeMillis() / 1000;
-        synchronized (rateLock) {
-            if (second != rateWindowSecond) {
-                rateWindowSecond = second;
-                rateWindowCount = 0;
-            }
-            if (rateWindowCount >= limit) {
-                return false;
-            }
-            rateWindowCount++;
-            return true;
-        }
-    }
-
     @EventListener
     public void handleConfigUpdate(ConfigUpdateEvent event) {
         if (event.getDeviceId() != null) {
@@ -561,8 +372,7 @@ public class CacheReportService {
         if (gatewayDeviceId == null) {
             return;
         }
-        String prefix = gatewayDeviceId + "|";
-        reportConfigCache.remove(gatewayDeviceId);
+        reportConfigProvider.evict(gatewayDeviceId);
         List<String> orphanIdentities = new ArrayList<>();
         identityGatewayMapping.forEach((identity, gateway) -> {
             if (gatewayDeviceId.equals(gateway)) {
@@ -578,128 +388,11 @@ public class CacheReportService {
 
     private ReportConfig resolveReportConfig(String deviceId) {
         String gatewayDeviceId = identityGatewayMapping.getOrDefault(deviceId, deviceId);
-        return reportConfigCache.compute(gatewayDeviceId, (key, existing) -> {
-            if (existing != null && existing.validate()) {
-                return existing;
-            }
-            return buildReportConfig(gatewayDeviceId);
-        });
-    }
-
-    private ReportConfig buildReportConfig(String gatewayDeviceId) {
-        ReportProperties.Mqtt mqtt = reportProperties.getMqtt();
-        BrokerEndpoint endpoint = parseBrokerEndpoint(mqtt.getBrokerUrl());
-        if (endpoint == null) {
-            log.error("MQTT broker 地址无效: {}", mqtt.getBrokerUrl());
-            return null;
+        ReportConfig config = reportConfigProvider.getConfig(gatewayDeviceId);
+        if (config != null && config.validate()) {
+            return config;
         }
-
-        CollectionConfig collectionConfig = configManager.getCollectionConfig(gatewayDeviceId);
-
-        ReportConfig config = new ReportConfig();
-        config.setProtocol(ProtocolConstant.PROTOCOL_MQTT);
-        config.setHost(endpoint.host());
-        config.setPort(endpoint.port());
-        config.setTargetId(resolveTargetId(gatewayDeviceId, collectionConfig));
-        config.setMaxRetryCount(reportProperties.getRetryTimes());
-        config.setRetryInterval((int) reportProperties.getIntervalMs());
-        config.setConnectTimeout(reportProperties.getTimeout());
-        config.setReadTimeout(reportProperties.getTimeout());
-
-        Map<String, Object> params = new HashMap<>();
-        params.put(ProtocolConstant.MQTT_PARAM_CLIENT_ID, resolveClientId(gatewayDeviceId, mqtt.getClientId()));
-        params.put(ProtocolConstant.MQTT_PARAM_USERNAME, mqtt.getUsername());
-        params.put(ProtocolConstant.MQTT_PARAM_PASSWORD, mqtt.getPassword());
-        params.put(ProtocolConstant.MQTT_PARAM_KEEP_ALIVE, mqtt.getKeepAliveInterval());
-        params.put(ProtocolConstant.MQTT_PARAM_CLEAN_SESSION, mqtt.isCleanSession());
-        params.put(ProtocolConstant.MQTT_PARAM_PUBLISH_TOPIC, resolveTopicTemplate(collectionConfig, mqtt));
-        params.put("qos", resolveQos(collectionConfig, mqtt));
-        params.put("retained", resolveRetained(collectionConfig, mqtt));
-        String fallbackProductKey = defaultProductKey();
-        if (fallbackProductKey != null && !fallbackProductKey.isEmpty()) {
-            params.put("defaultProductKey", fallbackProductKey);
-        }
-        config.setParams(params);
-
-        return config;
-    }
-
-    private String resolveClientId(String deviceId, String template) {
-        if (template == null || template.isEmpty()) {
-            return "collector-" + deviceId;
-        }
-        return template
-                .replace("{deviceId}", deviceId)
-                .replace("${deviceId}", deviceId);
-    }
-
-    private String resolveTargetId(String gatewayDeviceId, CollectionConfig config) {
-        if (config != null && config.getTargetId() != null && !config.getTargetId().isEmpty()) {
-            return config.getTargetId();
-        }
-        return gatewayDeviceId;
-    }
-
-    private String resolveTopicTemplate(CollectionConfig config, ReportProperties.Mqtt mqtt) {
-        String template = null;
-        Map<String, Object> reportParams = config != null ? config.getReportParams() : null;
-        if (reportParams != null && reportParams.get("reportTopic") != null) {
-            template = String.valueOf(reportParams.get("reportTopic"));
-        }
-        if (template == null || template.isEmpty()) {
-            template = mqtt.getDefaultTopicTemplate();
-        }
-        return template;
-    }
-
-    private int resolveQos(CollectionConfig config, ReportProperties.Mqtt mqtt) {
-        Map<String, Object> reportParams = config != null ? config.getReportParams() : null;
-        if (reportParams != null && reportParams.get("qos") != null) {
-            Object qos = reportParams.get("qos");
-            if (qos instanceof Number number) {
-                return number.intValue();
-            }
-            try {
-                return Integer.parseInt(qos.toString());
-            } catch (NumberFormatException ignore) {
-                // fall through
-            }
-        }
-        return mqtt.getQos();
-    }
-
-    private boolean resolveRetained(CollectionConfig config, ReportProperties.Mqtt mqtt) {
-        Map<String, Object> reportParams = config != null ? config.getReportParams() : null;
-        if (reportParams != null && reportParams.get("retain") != null) {
-            Object retain = reportParams.get("retain");
-            if (retain instanceof Boolean bool) {
-                return bool;
-            }
-            return Boolean.parseBoolean(retain.toString());
-        }
-        return mqtt.isRetained();
-    }
-
-    private BrokerEndpoint parseBrokerEndpoint(String brokerUrl) {
-        if (brokerUrl == null || brokerUrl.isEmpty()) {
-            return null;
-        }
-        try {
-            URI uri = URI.create(brokerUrl);
-            String host = Optional.ofNullable(uri.getHost()).orElse(uri.getPath());
-            int port = uri.getPort();
-            if (port <= 0) {
-                port = Objects.equals("ssl", uri.getScheme()) || Objects.equals("tls", uri.getScheme())
-                        ? 8883 : ProtocolConstant.DEFAULT_MQTT_PORT;
-            }
-            return new BrokerEndpoint(host, port);
-        } catch (Exception e) {
-            log.error("解析 MQTT broker 地址失败: {}", brokerUrl, e);
-            return null;
-        }
-    }
-
-    private record BrokerEndpoint(String host, int port) {
+        return null;
     }
 
     private static class FlushTracker {

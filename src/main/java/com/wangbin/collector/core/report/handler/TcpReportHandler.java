@@ -2,15 +2,13 @@ package com.wangbin.collector.core.report.handler;
 
 import com.wangbin.collector.common.constant.MessageConstant;
 import com.wangbin.collector.common.constant.ProtocolConstant;
-import com.wangbin.collector.core.report.adapter.BinaryProtocolAdapter;
-import com.wangbin.collector.core.report.adapter.IoTProtocolAdapter;
-import com.wangbin.collector.core.report.adapter.JsonProtocolAdapter;
 import com.wangbin.collector.core.report.model.ReportConfig;
 import com.wangbin.collector.core.report.model.ReportData;
 import com.wangbin.collector.core.report.model.ReportResult;
 import com.wangbin.collector.core.report.model.message.IoTMessage;
 import com.wangbin.collector.core.report.service.IoTProtocolService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.net.Socket;
@@ -21,6 +19,7 @@ import java.util.concurrent.*;
  * TCP上报处理器 - 支持物联网协议
  */
 @Slf4j
+@Component
 public class TcpReportHandler extends AbstractReportHandler {
 
     private final Map<String, Socket> connectionPool = new ConcurrentHashMap<>();

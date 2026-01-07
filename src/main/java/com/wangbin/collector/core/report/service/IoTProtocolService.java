@@ -17,7 +17,6 @@ import java.util.Map;
 @Service
 public class IoTProtocolService {
 
-    private final IoTProtocolAdapter protocolAdapter = new IoTProtocolAdapter();
     private final JsonProtocolAdapter jsonAdapter = new JsonProtocolAdapter();
     private final BinaryProtocolAdapter binaryAdapter = new BinaryProtocolAdapter();
 
@@ -37,80 +36,16 @@ public class IoTProtocolService {
             return null;
         }
 
-        // 如果未指定消息类型，使用默认属性上报
-        if (messageType == null) {
-            messageType = MessageConstant.MESSAGE_TYPE_PROPERTY_POST;
-        }
+        String resolvedType = messageType == null
+                ? MessageConstant.MESSAGE_TYPE_PROPERTY_POST
+                : messageType;
 
-        // 根据消息类型创建不同的消息对象
-        IoTMessage message;
-        switch (messageType) {
-            case MessageConstant.MESSAGE_TYPE_STATE_UPDATE:
-                StateMessage stateMessage = new StateMessage();
-                Map<String, Object> state = new HashMap<>();
-                state.put(MessageConstant.FIELD_VERSION, MessageConstant.MESSAGE_VERSION_1_0);
-                state.put("status", data.getValue());
-                state.put("timestamp", data.getTimestamp());
-                stateMessage.setState(state);
-                message = stateMessage;
-                break;
-
-            case MessageConstant.MESSAGE_TYPE_EVENT_POST:
-                EventMessage eventMessage = new EventMessage();
-                eventMessage.setEventCode(data.getPointCode());
-                Map<String, Object> eventData = new HashMap<>();
-                eventData.put("value", data.getValue());
-                eventData.put("timestamp", data.getTimestamp());
-                if (data.getMetadata() != null) {
-                    eventData.putAll(data.getMetadata());
-                }
-                eventMessage.setEventData(eventData);
-                message = eventMessage;
-                break;
-
-            case MessageConstant.MESSAGE_TYPE_OTA_PROGRESS:
-                // OTA升级进度消息
-                IoTMessage otaMessage = new IoTMessage();
-                otaMessage.setMethod(MessageConstant.MESSAGE_TYPE_OTA_PROGRESS);
-                Map<String, Object> otaParams = new HashMap<>();
-                otaParams.put("progress", data.getValue());
-                otaParams.put("stage", data.getPointCode());
-                otaMessage.setParams(otaParams);
-                message = otaMessage;
-                break;
-
-            case MessageConstant.MESSAGE_TYPE_PROPERTY_POST:
-            default:
-                PropertyMessage propertyMessage = new PropertyMessage();
-                Map<String, Object> propertyParams = new HashMap<>();
-                if (data.hasProperties()) {
-                    propertyParams.putAll(data.getProperties());
-                    if (!data.getPropertyQuality().isEmpty()) {
-                        propertyMessage.addParam("quality", data.getPropertyQuality());
-                    }
-                    if (!data.getPropertyTs().isEmpty()) {
-                        propertyMessage.addParam("propertyTs", data.getPropertyTs());
-                    }
-                } else {
-                    propertyParams.put(data.getPointCode(), data.getValue());
-                }
-                propertyMessage.setParams(propertyParams);
-                propertyMessage.setDeviceId(data.getDeviceId());
-                propertyMessage.setTimestamp(data.getTimestamp());
-                propertyMessage.setMetadata(new HashMap<>(data.getMetadata()));
-                if (!data.getPropertyQuality().isEmpty()) {
-                    propertyMessage.getQualityMap().putAll(data.getPropertyQuality());
-                }
-                if (!data.getPropertyTs().isEmpty()) {
-                    propertyMessage.getPropertyTsMap().putAll(data.getPropertyTs());
-                }
-                String batchId = data.getBatchId();
-                if (batchId != null) {
-                    propertyMessage.setMessageId(batchId);
-                }
-                message = propertyMessage;
-                break;
-        }
+        IoTMessage message = switch (resolvedType) {
+            case MessageConstant.MESSAGE_TYPE_STATE_UPDATE -> buildStateUpdateMessage(data);
+            case MessageConstant.MESSAGE_TYPE_EVENT_POST -> buildEventMessage(data);
+            case MessageConstant.MESSAGE_TYPE_OTA_PROGRESS -> buildOtaProgressMessage(data);
+            default -> buildPropertyMessage(data);
+        };
 
         // 设置公共字段
         message.setProductKey(productKey);
@@ -144,6 +79,70 @@ public class IoTProtocolService {
         }
 
         return message;
+    }
+
+    private IoTMessage buildStateUpdateMessage(ReportData data) {
+        StateMessage stateMessage = new StateMessage();
+        Map<String, Object> state = new HashMap<>();
+        state.put(MessageConstant.FIELD_VERSION, MessageConstant.MESSAGE_VERSION_1_0);
+        state.put("status", data.getValue());
+        state.put("timestamp", data.getTimestamp());
+        stateMessage.setState(state);
+        return stateMessage;
+    }
+
+    private IoTMessage buildEventMessage(ReportData data) {
+        EventMessage eventMessage = new EventMessage();
+        eventMessage.setEventCode(data.getPointCode());
+        Map<String, Object> eventData = new HashMap<>();
+        eventData.put("value", data.getValue());
+        eventData.put("timestamp", data.getTimestamp());
+        if (data.getMetadata() != null) {
+            eventData.putAll(data.getMetadata());
+        }
+        eventMessage.setEventData(eventData);
+        return eventMessage;
+    }
+
+    private IoTMessage buildOtaProgressMessage(ReportData data) {
+        IoTMessage otaMessage = new IoTMessage();
+        otaMessage.setMethod(MessageConstant.MESSAGE_TYPE_OTA_PROGRESS);
+        Map<String, Object> otaParams = new HashMap<>();
+        otaParams.put("progress", data.getValue());
+        otaParams.put("stage", data.getPointCode());
+        otaMessage.setParams(otaParams);
+        return otaMessage;
+    }
+
+    private IoTMessage buildPropertyMessage(ReportData data) {
+        PropertyMessage propertyMessage = new PropertyMessage();
+        Map<String, Object> propertyParams = new HashMap<>();
+        if (data.hasProperties()) {
+            propertyParams.putAll(data.getProperties());
+            if (!data.getPropertyQuality().isEmpty()) {
+                propertyMessage.addParam("quality", data.getPropertyQuality());
+            }
+            if (!data.getPropertyTs().isEmpty()) {
+                propertyMessage.addParam("propertyTs", data.getPropertyTs());
+            }
+        } else {
+            propertyParams.put(data.getPointCode(), data.getValue());
+        }
+        propertyMessage.setParams(propertyParams);
+        propertyMessage.setDeviceId(data.getDeviceId());
+        propertyMessage.setTimestamp(data.getTimestamp());
+        propertyMessage.setMetadata(new HashMap<>(data.getMetadata()));
+        if (!data.getPropertyQuality().isEmpty()) {
+            propertyMessage.getQualityMap().putAll(data.getPropertyQuality());
+        }
+        if (!data.getPropertyTs().isEmpty()) {
+            propertyMessage.getPropertyTsMap().putAll(data.getPropertyTs());
+        }
+        String batchId = data.getBatchId();
+        if (batchId != null) {
+            propertyMessage.setMessageId(batchId);
+        }
+        return propertyMessage;
     }
 
     /**

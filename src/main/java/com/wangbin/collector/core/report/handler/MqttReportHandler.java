@@ -8,6 +8,7 @@ import com.wangbin.collector.core.report.model.ReportData;
 import com.wangbin.collector.core.report.model.ReportResult;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 import org.eclipse.paho.mqttv5.client.*;
 import org.eclipse.paho.mqttv5.client.persist.MemoryPersistence;
 import org.eclipse.paho.mqttv5.common.*;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * MQTT报告处理器 - v5版本
  */
 @Slf4j
+@Component
 public class MqttReportHandler extends AbstractReportHandler {
 
     private MqttClientManager clientManager;
