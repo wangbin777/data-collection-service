@@ -177,6 +177,7 @@ public class DataQualityProcessor extends AbstractDataProcessor {
                         .deviceId(point != null && point.getDeviceId() != null
                                 ? point.getDeviceId()
                                 : contextDeviceId)
+                        .deviceName(point != null ? point.getDeviceName() : null)
                         .pointId(point != null ? point.getPointId() : null)
                         .pointCode(point != null ? point.getPointCode() : null)
                         .ruleId(event.ruleId)
@@ -185,6 +186,7 @@ public class DataQualityProcessor extends AbstractDataProcessor {
                         .eventType(event.type)
                         .message(event.message)
                         .value(result != null ? result.getFinalValue(rawValue) : rawValue)
+                        .unit(point != null ? point.getUnit() : null)
                         .timestamp(context != null ? context.getProcessTime() : System.currentTimeMillis())
                         .build();
         alertManager.notifyAlert(notification);

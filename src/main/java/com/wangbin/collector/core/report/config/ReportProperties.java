@@ -129,6 +129,16 @@ public class ReportProperties {
          * topic 前缀，默认 iot/device。
          */
         private String topicPrefix = "iot/device";
+        private String ackTopicPrefix = "/sys";
+        private String ackTopicSuffix = "thing/property/post_reply";
+        /**
+         * ACK 主题模板
+         */
+        private String ackTopicTemplate = "/sys/{productKey}/{deviceName}/thing/property/post_reply";
+        /**
+         * ACK 等待超时时间（秒）
+         */
+        private int ackTimeoutSeconds = 5;
         private String username;
         private String password;
         private int qos = 1;
@@ -150,6 +160,39 @@ public class ReportProperties {
 
         public String getDefaultTopicTemplate() {
             return getTopicPrefix() + "/{productKey}/{deviceName}/{method}";
+        }
+
+        public String getAckTopicTemplate() {
+            if (ackTopicTemplate != null && !ackTopicTemplate.isEmpty()) {
+                return ackTopicTemplate;
+            }
+            return buildAckTemplateFromParts();
+        }
+
+        public int getAckTimeoutMs() {
+            int seconds = ackTimeoutSeconds <= 0 ? 5 : ackTimeoutSeconds;
+            return seconds * 1000;
+        }
+
+        private String buildAckTemplateFromParts() {
+            String prefix = normalizePrefix(ackTopicPrefix);
+            String suffix = normalizeSuffix(ackTopicSuffix);
+            return prefix + "/{productKey}/{deviceName}/" + suffix;
+        }
+
+        private String normalizePrefix(String prefix) {
+            String value = prefix == null || prefix.isBlank() ? "/sys" : prefix.trim();
+            if (!value.startsWith("/")) {
+                value = "/" + value;
+            }
+            return value.endsWith("/") && value.length() > 1
+                    ? value.substring(0, value.length() - 1)
+                    : value;
+        }
+
+        private String normalizeSuffix(String suffix) {
+            String value = suffix == null ? "thing/property/post_reply" : suffix.trim();
+            return value.startsWith("/") ? value.substring(1) : value;
         }
     }
 }

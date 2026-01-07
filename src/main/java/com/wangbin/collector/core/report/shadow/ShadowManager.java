@@ -7,7 +7,9 @@ import com.wangbin.collector.core.processor.ProcessResult;
 import com.wangbin.collector.core.report.config.ReportProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.logging.log4j.util.Strings;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.Collections;
 import java.util.List;
@@ -98,8 +100,8 @@ public class ShadowManager {
         long minInterval = point.getEventMinIntervalMs(reportProperties.getEventMinIntervalMs());
 
         EventInfo info = null;
-        if (fieldKey != null) {
-            info = matchAlarmRule(point.getAlarmRule(), result);
+        if (Strings.isNotBlank(fieldKey)) {
+            info = matchAlarmRule(point, point.getAlarmRule(), result);
         }
         if (info == null) {
             info = evaluateProcessResultEvent(result);
@@ -124,8 +126,11 @@ public class ShadowManager {
         return info;
     }
 
-    private EventInfo matchAlarmRule(List<AlarmRule> rules, ProcessResult result) {
-        if (rules == null || rules.isEmpty()) {
+    private EventInfo matchAlarmRule(DataPoint point, List<AlarmRule> rules, ProcessResult result) {
+        if (point == null || point.getAlarmEnabled() == null || point.getAlarmEnabled() != 1) {
+            return null;
+        }
+        if (CollectionUtils.isEmpty(rules)) {
             return null;
         }
         Double value = toDouble(result.getFinalValue());

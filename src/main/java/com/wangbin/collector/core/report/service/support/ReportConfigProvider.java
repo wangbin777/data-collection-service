@@ -77,6 +77,8 @@ public class ReportConfigProvider {
         params.put(ProtocolConstant.MQTT_PARAM_PUBLISH_TOPIC, resolveTopicTemplate(collectionConfig, mqtt));
         params.put("qos", resolveQos(collectionConfig, mqtt));
         params.put("retained", resolveRetained(collectionConfig, mqtt));
+        params.put(ProtocolConstant.MQTT_PARAM_ACK_TOPIC_TEMPLATE, mqtt.getAckTopicTemplate());
+        params.put(ProtocolConstant.MQTT_PARAM_ACK_TIMEOUT, mqtt.getAckTimeoutMs());
         String fallbackProductKey = mqtt.getProductKey();
         if (fallbackProductKey != null && !fallbackProductKey.isEmpty()) {
             params.put("defaultProductKey", fallbackProductKey);

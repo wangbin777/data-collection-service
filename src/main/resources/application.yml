@@ -86,6 +86,9 @@ collector:
       username: collector-1&byxuTQjqn6TCDwJ0
       password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
       topic-prefix: iot/device
+      ack-topic-prefix: /sys
+      ack-topic-suffix: thing/property/post_reply
+      ack-timeout-seconds: 5
       qos: 1
       clean-session: true
       connection-timeout: 30

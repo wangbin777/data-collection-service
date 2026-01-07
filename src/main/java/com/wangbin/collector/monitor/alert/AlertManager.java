@@ -1,5 +1,6 @@
 package com.wangbin.collector.monitor.alert;
 
+import com.wangbin.collector.core.report.service.CacheReportService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -14,9 +15,14 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 @Component
 public class AlertManager {
 
+    private final CacheReportService cacheReportService;
     private final Map<String, AlertRule> rules = new ConcurrentHashMap<>();
     private final Queue<AlertNotification> recentAlerts = new ConcurrentLinkedQueue<>();
     private final int maxHistorySize = 1000;
+
+    public AlertManager(CacheReportService cacheReportService) {
+        this.cacheReportService = cacheReportService;
+    }
 
     public void register(AlertRule rule) {
         rules.put(rule.getId(), rule);
@@ -44,6 +50,7 @@ public class AlertManager {
                 notification.getPointCode() != null ? notification.getPointCode() : notification.getPointId(),
                 notification.getLevel(),
                 notification.getMessage());
+        cacheReportService.reportAlert(notification);
     }
 
     public List<AlertNotification> getRecentAlerts() {

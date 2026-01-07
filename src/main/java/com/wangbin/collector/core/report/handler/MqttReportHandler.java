@@ -1,5 +1,7 @@
 package com.wangbin.collector.core.report.handler;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wangbin.collector.common.constant.MessageConstant;
 import com.wangbin.collector.common.constant.ProtocolConstant;
 import com.wangbin.collector.common.enums.QualityEnum;
@@ -14,9 +16,11 @@ import org.eclipse.paho.mqttv5.client.persist.MemoryPersistence;
 import org.eclipse.paho.mqttv5.common.*;
 import org.eclipse.paho.mqttv5.common.packet.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Pattern;
 
 /**
  * MQTT报告处理器 - v5版本
@@ -25,10 +29,13 @@ import java.util.concurrent.atomic.AtomicLong;
 @Component
 public class MqttReportHandler extends AbstractReportHandler {
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private MqttClientManager clientManager;
     private MessagePublisher messagePublisher;
     private SubscriptionManager subscriptionManager;
     private final Map<String, MqttConnectionConfig> connectionConfigs = new ConcurrentHashMap<>();
+    private final AckManager ackManager = new AckManager();
 
     public MqttReportHandler() {
         super("MqttReportHandler", "MQTT", "MQTT v5协议上报处理器");
@@ -38,7 +45,7 @@ public class MqttReportHandler extends AbstractReportHandler {
     protected void doInit() throws Exception {
         log.info("初始化MQTT v5报告处理器...");
 
-        clientManager = new MqttClientManager();
+        clientManager = new MqttClientManager(ackManager);
         clientManager.init();
 
         messagePublisher = new MessagePublisher(clientManager);
@@ -55,6 +62,7 @@ public class MqttReportHandler extends AbstractReportHandler {
         log.debug("开始MQTT v5上报：{} -> {}:{}", data.getPointCode(), config.getHost(), config.getPort());
         long startTime = System.currentTimeMillis();
 
+        AckManager.AckRegistration ackRegistration = null;
         try {
             // 1. 获取连接配置
             MqttConnectionConfig connConfig = getConnectionConfig(config);
@@ -71,6 +79,9 @@ public class MqttReportHandler extends AbstractReportHandler {
 
             // 4. 构建消息内容
             byte[] messagePayload = buildMessagePayload(data, config);
+
+            // 4.1 注册ACK监听
+            ackRegistration = prepareAckRegistration(connConfig, data);
 
             // 5. 发布消息 - v5 API
             PublishResult publishResult = messagePublisher.publish(
@@ -96,11 +107,17 @@ public class MqttReportHandler extends AbstractReportHandler {
                 log.warn("MQTT v5上报失败：{} -> {}:{}, 错误：{}",
                         data.getPointCode(), config.getHost(), config.getPort(),
                         publishResult.getErrorMessage());
+                ackManager.cancel(ackRegistration);
+            }
+
+            if (result.isSuccess()) {
+                applyAckResult(connConfig, ackRegistration, result);
             }
 
             return result;
 
         } catch (Exception e) {
+            ackManager.cancel(ackRegistration);
             log.error("MQTT v5上报异常：{} -> {}:{}",
                     data.getPointCode(), config.getHost(), config.getPort(), e);
             throw e;
@@ -126,19 +143,23 @@ public class MqttReportHandler extends AbstractReportHandler {
             }
 
             // 2. 批量发布消息
-            List<PublishTask> publishTasks = new ArrayList<>(dataList.size());
+        List<PublishTask> publishTasks = new ArrayList<>(dataList.size());
+        List<AckManager.AckRegistration> ackRegistrations = new ArrayList<>(dataList.size());
 
-            for (ReportData data : dataList) {
-                // 构建发布选项
-                MqttPublishOptions publishOptions = buildPublishOptions(data, config);
+        for (ReportData data : dataList) {
+            // 构建发布选项
+            MqttPublishOptions publishOptions = buildPublishOptions(data, config);
 
-                // 构建消息内容
-                byte[] messagePayload = buildMessagePayload(data, config);
+            // 构建消息内容
+            byte[] messagePayload = buildMessagePayload(data, config);
 
-                // 创建发布任务
-                PublishTask task = new PublishTask(
-                        mqttClient,
-                        publishOptions.getTopic(),
+            // 注册ACK监听
+            ackRegistrations.add(prepareAckRegistration(connConfig, data));
+
+            // 创建发布任务
+            PublishTask task = new PublishTask(
+                    mqttClient,
+                    publishOptions.getTopic(),
                         messagePayload,
                         publishOptions,
                         data.getPointCode(),
@@ -161,6 +182,9 @@ public class MqttReportHandler extends AbstractReportHandler {
                 if (!publishResult.isSuccess()) {
                     result.setSuccess(false);
                     result.setErrorMessage("MQTT v5发布失败: " + publishResult.getErrorMessage());
+                    ackManager.cancel(ackRegistrations.get(i));
+                } else {
+                    applyAckResult(connConfig, ackRegistrations.get(i), result);
                 }
 
                 results.add(result);
@@ -173,6 +197,7 @@ public class MqttReportHandler extends AbstractReportHandler {
                     successCount, results.size() - successCount, results.size());
 
         } catch (Exception e) {
+            ackRegistrations.forEach(ackManager::cancel);
             log.error("批量MQTT v5上报异常：{}:{}", config.getHost(), config.getPort(), e);
 
             // 为所有数据创建错误结果
@@ -353,11 +378,30 @@ public class MqttReportHandler extends AbstractReportHandler {
             }
 
             // 订阅主题
+            List<String> subscribeTopicList = new ArrayList<>();
             Object subscribeTopics = config.getParam(ProtocolConstant.MQTT_PARAM_SUBSCRIBE_TOPICS);
             if (subscribeTopics instanceof java.util.List) {
                 @SuppressWarnings("unchecked")
                 java.util.List<String> topics = (java.util.List<String>) subscribeTopics;
-                connConfig.setSubscribeTopics(topics);
+                for (Object topic : topics) {
+                    if (topic != null) {
+                        subscribeTopicList.add(String.valueOf(topic));
+                    }
+                }
+            }
+            connConfig.setSubscribeTopics(subscribeTopicList);
+
+            connConfig.setDefaultProductKey(config.getStringParam("defaultProductKey"));
+            connConfig.setAckTopicTemplate(config.getStringParam(
+                    ProtocolConstant.MQTT_PARAM_ACK_TOPIC_TEMPLATE));
+            connConfig.setAckTimeoutMs(config.getIntParam(
+                    ProtocolConstant.MQTT_PARAM_ACK_TIMEOUT,
+                    ProtocolConstant.DEFAULT_MQTT_ACK_TIMEOUT_MS));
+            connConfig.prepareAckSettings();
+            if (connConfig.getAckSubscriptionTopic() != null
+                    && !connConfig.getAckSubscriptionTopic().isEmpty()
+                    && !subscribeTopicList.contains(connConfig.getAckSubscriptionTopic())) {
+                subscribeTopicList.add(connConfig.getAckSubscriptionTopic());
             }
 
             return connConfig;
@@ -467,6 +511,7 @@ public class MqttReportHandler extends AbstractReportHandler {
             messageId = UUID.randomUUID().toString();
         }
         jsonData.put("id", messageId);
+        data.addMetadata("messageId", messageId);
         jsonData.put("version", MessageConstant.MESSAGE_VERSION_1_0);
         jsonData.put("method", data.getMethod());
         jsonData.put("deviceId", data.getDeviceId());
@@ -593,6 +638,49 @@ public class MqttReportHandler extends AbstractReportHandler {
         }
     }
 
+    private AckManager.AckRegistration prepareAckRegistration(MqttConnectionConfig connConfig, ReportData data) {
+        if (connConfig == null || data == null) {
+            return AckManager.AckRegistration.disabled();
+        }
+        return ackManager.register(extractMessageId(data), connConfig.shouldWaitForAck());
+    }
+
+    private String extractMessageId(ReportData data) {
+        if (data == null || data.getMetadata() == null) {
+            return null;
+        }
+        Object messageId = data.getMetadata().get("messageId");
+        return messageId != null ? messageId.toString() : null;
+    }
+
+    private void applyAckResult(MqttConnectionConfig connConfig,
+                                AckManager.AckRegistration registration,
+                                ReportResult result) {
+        if (registration == null || result == null) {
+            return;
+        }
+        if (!registration.isEnabled() || connConfig == null || !connConfig.shouldWaitForAck()) {
+            ackManager.cancel(registration);
+            return;
+        }
+        AckMessage ack = ackManager.await(registration, connConfig.getAckTimeoutMs());
+        if (ack == null) {
+            ackManager.cancel(registration);
+            return;
+        }
+
+        result.addMetadata("ackCode", ack.code);
+        result.addMetadata("ackMessage", ack.message);
+
+        if (ack.timeout) {
+            result.setSuccess(false);
+            result.setErrorMessage("MQTT ack timeout");
+        } else if (ack.code != 0) {
+            result.setSuccess(false);
+            result.setErrorMessage("MQTT ack error: " + ack.message);
+        }
+    }
+
     private MqttAsyncClient obtainConnectedClient(MqttConnectionConfig connConfig) {
         try {
             MqttAsyncClient client = clientManager.getClient(connConfig);
@@ -627,6 +715,103 @@ public class MqttReportHandler extends AbstractReportHandler {
         return result;
     }
 
+    private class AckManager {
+        private final ConcurrentHashMap<String, CompletableFuture<AckMessage>> pendingAcks = new ConcurrentHashMap<>();
+
+        AckRegistration register(String messageId, boolean enabled) {
+            if (!enabled || messageId == null || messageId.isEmpty()) {
+                return AckRegistration.disabled();
+            }
+            CompletableFuture<AckMessage> future = new CompletableFuture<>();
+            CompletableFuture<AckMessage> previous = pendingAcks.put(messageId, future);
+            if (previous != null) {
+                previous.cancel(true);
+            }
+            return new AckRegistration(messageId, future, true);
+        }
+
+        AckMessage await(AckRegistration registration, long timeoutMs) {
+            if (registration == null || !registration.isEnabled()) {
+                return null;
+            }
+            long waitMs = timeoutMs > 0 ? timeoutMs : ProtocolConstant.DEFAULT_MQTT_ACK_TIMEOUT_MS;
+            try {
+                return registration.future.get(waitMs, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                pendingAcks.remove(registration.messageId, registration.future);
+                return AckMessage.timeout(registration.messageId);
+            } catch (Exception e) {
+                pendingAcks.remove(registration.messageId, registration.future);
+                return AckMessage.failure(registration.messageId, e.getMessage());
+            }
+        }
+
+        void cancel(AckRegistration registration) {
+            if (registration == null || !registration.isEnabled()) {
+                return;
+            }
+            pendingAcks.remove(registration.messageId, registration.future);
+        }
+
+        void complete(String messageId, AckMessage ackMessage) {
+            if (messageId == null) {
+                return;
+            }
+            CompletableFuture<AckMessage> future = pendingAcks.remove(messageId);
+            if (future != null) {
+                future.complete(ackMessage);
+            } else {
+                log.debug("Received ACK for unknown messageId {}", messageId);
+            }
+        }
+
+        private class AckRegistration {
+            private final String messageId;
+            private final CompletableFuture<AckMessage> future;
+            private final boolean enabled;
+
+            private AckRegistration(String messageId, CompletableFuture<AckMessage> future, boolean enabled) {
+                this.messageId = messageId;
+                this.future = future;
+                this.enabled = enabled;
+            }
+
+            static AckRegistration disabled() {
+                return new AckRegistration(null, null, false);
+            }
+
+            boolean isEnabled() {
+                return enabled && messageId != null && future != null;
+            }
+        }
+    }
+
+    private static class AckMessage {
+        private final String messageId;
+        private final int code;
+        private final String message;
+        private final boolean timeout;
+
+        private AckMessage(String messageId, int code, String message, boolean timeout) {
+            this.messageId = messageId;
+            this.code = code;
+            this.message = message;
+            this.timeout = timeout;
+        }
+
+        private static AckMessage received(String messageId, int code, String message) {
+            return new AckMessage(messageId, code, message, false);
+        }
+
+        private static AckMessage timeout(String messageId) {
+            return new AckMessage(messageId, -1, "ACK timeout", true);
+        }
+
+        private static AckMessage failure(String messageId, String message) {
+            return new AckMessage(messageId, -1, message != null ? message : "ACK wait failed", false);
+        }
+    }
+
     // =============== 内部类 ===============
 
     /**
@@ -648,7 +833,12 @@ public class MqttReportHandler extends AbstractReportHandler {
         private boolean sslEnabled = false;
         private MqttWillMessage willMessage;
         private String defaultPublishTopic;
-        private List<String> subscribeTopics;
+        private List<String> subscribeTopics = new ArrayList<>();
+        private String ackTopicTemplate;
+        private String ackSubscriptionTopic;
+        private Pattern ackTopicPattern;
+        private long ackTimeoutMs = ProtocolConstant.DEFAULT_MQTT_ACK_TIMEOUT_MS;
+        private String defaultProductKey;
 
         public MqttConnectionConfig(ReportConfig config) {
             this.targetId = config.getTargetId();
@@ -663,6 +853,52 @@ public class MqttReportHandler extends AbstractReportHandler {
 
         public String getKey() {
             return targetId + "@" + host + ":" + port;
+        }
+
+        public void prepareAckSettings() {
+            if (ackTopicTemplate == null || ackTopicTemplate.isEmpty()) {
+                ackSubscriptionTopic = null;
+                ackTopicPattern = null;
+                return;
+            }
+            ackSubscriptionTopic = buildAckSubscription(ackTopicTemplate);
+            ackTopicPattern = Pattern.compile(buildAckRegex(ackTopicTemplate));
+        }
+
+        private String buildAckSubscription(String template) {
+            String topic = template;
+            String pk = defaultProductKey != null && !defaultProductKey.isEmpty() ? defaultProductKey : "+";
+            topic = topic.replace("{productKey}", pk);
+            topic = topic.replace("{deviceName}", "+");
+            return topic;
+        }
+
+        private String buildAckRegex(String template) {
+            StringBuilder regex = new StringBuilder();
+            for (int i = 0; i < template.length(); ) {
+                if (template.startsWith("{productKey}", i)) {
+                    regex.append("[^/]+");
+                    i += "{productKey}".length();
+                } else if (template.startsWith("{deviceName}", i)) {
+                    regex.append("[^/]+");
+                    i += "{deviceName}".length();
+                } else {
+                    char ch = template.charAt(i++);
+                    if ("\\.[]{}()*+-?^$|".indexOf(ch) >= 0) {
+                        regex.append('\\');
+                    }
+                    regex.append(ch);
+                }
+            }
+            return regex.toString();
+        }
+
+        public boolean shouldWaitForAck() {
+            return ackTopicPattern != null && ackTimeoutMs > 0;
+        }
+
+        public boolean isAckTopic(String topic) {
+            return ackTopicPattern != null && topic != null && ackTopicPattern.matcher(topic).matches();
         }
     }
 
@@ -757,6 +993,11 @@ public class MqttReportHandler extends AbstractReportHandler {
         private final Map<String, MqttAsyncClient> clients = new ConcurrentHashMap<>();
         private final Map<String, MqttConnectionConfig> clientConfigs = new ConcurrentHashMap<>();
         private ScheduledExecutorService monitorExecutor;
+        private final AckManager ackManager;
+
+        public MqttClientManager(AckManager ackManager) {
+            this.ackManager = ackManager;
+        }
 
         public void init() {
             monitorExecutor = Executors.newSingleThreadScheduledExecutor();
@@ -1023,45 +1264,103 @@ public class MqttReportHandler extends AbstractReportHandler {
         }
     }
 
+
     /**
-         * MQTT回调处理器 - v5
-         */
-        private record MqttCallbackHandler(MqttConnectionConfig config) implements MqttCallback {
+     * MQTT v5 callback handler
+     */
+    private class MqttCallbackHandler implements MqttCallback {
+        private final MqttConnectionConfig config;
+
+        private MqttCallbackHandler(MqttConnectionConfig config) {
+            this.config = config;
+        }
 
         @Override
-            public void disconnected(MqttDisconnectResponse disconnectResponse) {
-                log.warn("MQTT v5连接断开：{}，原因码：{}",
-                        config.getBrokerUrl(),
-                        disconnectResponse.getReturnCode());
-            }
-
-            @Override
-            public void mqttErrorOccurred(MqttException exception) {
-                log.error("MQTT v5错误：{}", config.getBrokerUrl(), exception);
-            }
-
-            @Override
-            public void messageArrived(String topic, MqttMessage message) throws Exception {
-                log.debug("收到MQTT v5消息：主题={}，QoS={}，内容长度={}",
-                        topic, message.getQos(), message.getPayload().length);
-            }
-
-            @Override
-            public void deliveryComplete(IMqttToken token) {
-                // 消息发布完成回调
-                log.debug("MQTT v5消息发布完成：消息ID={}", token.getMessageId());
-            }
-
-            @Override
-            public void connectComplete(boolean reconnect, String serverURI) {
-                log.info("MQTT v5连接{}完成：{}", reconnect ? "重连" : "初次", serverURI);
-            }
-
-            @Override
-            public void authPacketArrived(int reasonCode, MqttProperties properties) {
-                log.debug("MQTT v5认证包到达：原因码={}", reasonCode);
-            }
+        public void disconnected(MqttDisconnectResponse disconnectResponse) {
+            log.warn("MQTT v5?????{}?????{}",
+                    config.getBrokerUrl(),
+                    disconnectResponse != null ? disconnectResponse.getReturnCode() : -1);
         }
+
+        @Override
+        public void mqttErrorOccurred(MqttException exception) {
+            log.error("MQTT v5???{}", config.getBrokerUrl(), exception);
+        }
+
+        @Override
+        public void messageArrived(String topic, MqttMessage message) {
+            if (config.isAckTopic(topic)) {
+                handleAckMessage(topic, message);
+                return;
+            }
+
+            int payloadLength = message != null && message.getPayload() != null
+                    ? message.getPayload().length : 0;
+            log.debug("MQTT v5?????topic={} QoS={} bytes={}",
+                    topic, message != null ? message.getQos() : -1, payloadLength);
+        }
+
+        @Override
+        public void deliveryComplete(IMqttToken token) {
+            log.debug("MQTT v5?????????ID={}", token != null ? token.getMessageId() : -1);
+        }
+
+        @Override
+        public void connectComplete(boolean reconnect, String serverURI) {
+            log.info("MQTT v5??{}???{}", reconnect ? "??" : "??", serverURI);
+        }
+
+        @Override
+        public void authPacketArrived(int reasonCode, MqttProperties properties) {
+            log.debug("MQTT v5?????????{}", reasonCode);
+        }
+    }
+
+    private void handleAckMessage(String topic, MqttMessage message) {
+        if (message == null || message.getPayload() == null) {
+            log.debug("??????ACK payload?topic={}", topic);
+            return;
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(message.getPayload());
+            JsonNode idNode = root.get("id");
+            if (idNode == null || idNode.isNull()) {
+                log.debug("MQTT ACK??id?topic={}", topic);
+                return;
+            }
+            String messageId = idNode.asText(null);
+            if (messageId == null || messageId.isEmpty()) {
+                log.debug("MQTT ACK id???topic={}", topic);
+                return;
+            }
+            int code = parseAckCode(root);
+            String msgText = root.has("msg") && !root.get("msg").isNull()
+                    ? root.get("msg").asText("")
+                    : "";
+            ackManager.complete(messageId, AckMessage.received(messageId, code, msgText));
+            log.debug("MQTT ACK???id={} code={} topic={}", messageId, code, topic);
+        } catch (Exception e) {
+            log.warn("??MQTT ACK ???topic={} err={}", topic, e.getMessage());
+        }
+    }
+
+    private int parseAckCode(JsonNode root) {
+        if (root == null) {
+            return 0;
+        }
+        JsonNode codeNode = root.get("code");
+        if (codeNode == null || codeNode.isNull()) {
+            return 0;
+        }
+        if (codeNode.isInt()) {
+            return codeNode.asInt();
+        }
+        try {
+            return Integer.parseInt(codeNode.asText());
+        } catch (NumberFormatException ex) {
+            return 0;
+        }
+    }
 
     /**
      * 消息发布管理器 - v5

@@ -162,3 +162,18 @@ result.addMetadata("eventMessage", "test");
 2. 单位：若采集值的原始单位与 DataPoint.unit 不同，可在 ProcessContext 写入 context.addAttribute("rawUnit", "°F") 或在数据点的 additionalConfig.sourceUnit 中声明；必要时可在配置里覆盖 contextUnitAttribute 和                   
    additionalConfigUnitKey。
 3. 死区缓存：通过处理器配置中的 sampleTtlMs、maxCacheSize 控制缓存生命期。
+
+
+
+## 优化
+• - MQTT 回执与离线重传 – 现在可以在 collector.report.mqtt 中配置 ack-topic-prefix/ack-topic-suffix（或直接覆写模板），所有上报会自动订阅云端回执 Topic，并按 ACK JSON 里的 id/code/msg 关联结果（MqttReportHandler 已增加 ACK 处理
+器）。当客户端掉线或回执超时，CacheReportService 会把结果标记为 deferred 并延时重试，等连接恢复再补发；日志里会看到 “Deferred retry scheduled …” 方便确认。
+- 告警链路打通 – AlertNotification 新增设备名称、单位等字段，DataQualityProcessor 触发告警时会填好这些信息后交给 AlertManager。AlertManager 不再只打印日志，而是调用新加的 CacheReportService.reportAlert 直接上发事件。          
+  ShadowManager 在匹配告警规则前会检查 DataPoint.alarmEnabled==1，避免误触发。
+- 配置与文档 – application.yml 和 README.md 都更新了关于 ACK Topic 的说明，照着填上云端要求的前缀/后缀即可使用；如需覆盖默认模板可直接写完整的 ackTopicTemplate。
+
+使用步骤（复述）：
+
+1. 在 application.yml（或相应环境配置）里配置好 MQTT 账号、上报 Topic 以及 ack-topic-prefix/suffix，启动后系统会自动订阅 /sys/<projectKey>/<deviceName>/… 这类回执队列。
+2. 希望上报告警的点位要在 DataPoint 配置里把 alarmEnabled 设置为 1；流程会自动把告警通过 reportAlert 上发，并附带 unit/deviceName 等元信息。
+3. 如果 MQTT 断线，系统会自动将批次标记为 deferred 并等待重连，无需人工干预。

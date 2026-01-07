@@ -19,6 +19,7 @@ import com.wangbin.collector.core.report.shadow.ShadowManager;
 import com.wangbin.collector.core.report.shadow.ShadowManager.EventInfo;
 import com.wangbin.collector.core.report.shadow.ShadowManager.ShadowUpdateResult;
 import com.wangbin.collector.core.report.shadow.ValueMeta;
+import com.wangbin.collector.monitor.alert.AlertNotification;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -267,26 +268,21 @@ public class CacheReportService {
                           FlushTracker tracker) {
         String chunkKey = tracker != null ? tracker.registerDispatch(data) : null;
         if (!gatewayRateLimiter.tryAcquire(highPriority)) {
-            log.warn("网关限流丢弃本次上报: {} -> {}", data.getPointCode(), config.getTargetId());
-            handleChunkResult(data, false, tracker, chunkKey, config, highPriority);
+            log.warn("Gateway rate limit dropped current report: {} -> {}", data.getPointCode(), config.getTargetId());
+            handleChunkResult(data, null, null, tracker, chunkKey, config, highPriority);
             return;
         }
 
         CompletableFuture<ReportResult> future = reportManager.reportAsync(data, config);
-        future.whenComplete((result, throwable) -> {
-            boolean success = throwable == null && result != null && result.isSuccess();
-            if (throwable != null) {
-                log.error("发送数据失败: {} -> {}", data.getPointCode(), config.getTargetId(), throwable);
-            } else if (result != null && !result.isSuccess()) {
-                log.warn("上报失败: {} -> {} , err={}", data.getPointCode(),
-                        config.getTargetId(), result.getErrorMessage());
-            }
-            handleChunkResult(data, success, tracker, chunkKey, config, highPriority);
-        });
+        future.whenComplete((result, throwable) ->
+                handleChunkResult(data, result, throwable, tracker, chunkKey, config, highPriority));
     }
 
+
+
     private void handleChunkResult(ReportData data,
-                                   boolean success,
+                                   ReportResult result,
+                                   Throwable throwable,
                                    FlushTracker tracker,
                                    String chunkKey,
                                    ReportConfig config,
@@ -295,12 +291,25 @@ public class CacheReportService {
             return;
         }
 
+        boolean success = throwable == null && result != null && result.isSuccess();
+        boolean deferred = isDeferredResult(result);
         boolean scheduledRetry = false;
-        if (success) {
+
+        if (throwable != null) {
+            log.error("Send telemetry failed: {} -> {}", data.getPointCode(), config.getTargetId(), throwable);
+        } else if (result != null && !result.isSuccess() && !deferred) {
+            log.warn("Report rejected: {} -> {} , err={}", data.getPointCode(),
+                    config.getTargetId(), result.getErrorMessage());
+        }
+
+        if (deferred) {
+            scheduledRetry = true;
+            scheduleDeferredRetry(data, config, highPriority, tracker);
+        } else if (success) {
             shadowManager.markReportedValues(data.getDeviceId(), data.getProperties(), data.getPropertyTs());
         } else if (chunkKey != null && tracker.shouldRetry(chunkKey)) {
             scheduledRetry = true;
-            log.warn("分片重试: device={}, key={}, attempt={} / {}",
+            log.warn("Chunk retry: device={}, key={}, attempt={} / {}",
                     tracker.deviceId, chunkKey, tracker.getAttemptCount(chunkKey), reportProperties.getRetryTimes());
             dispatch(data, config, highPriority, tracker);
         } else {
@@ -315,6 +324,31 @@ public class CacheReportService {
                 shadowManager.markReported(tracker.deviceId, tracker.windowStart, tracker.windowEnd);
             }
         }
+    }
+
+    private boolean isDeferredResult(ReportResult result) {
+        if (result == null || result.getMetadata() == null) {
+            return false;
+        }
+        Object deferred = result.getMetadata().get("deferred");
+        if (deferred instanceof Boolean bool) {
+            return bool;
+        }
+        if (deferred instanceof String text) {
+            return Boolean.parseBoolean(text);
+        }
+        return false;
+    }
+
+    private void scheduleDeferredRetry(ReportData data,
+                                       ReportConfig config,
+                                       boolean highPriority,
+                                       FlushTracker tracker) {
+        long delayMillis = Math.max(2000L, reportProperties.getIntervalMs());
+        taskScheduler.schedule(() -> dispatch(data, config, highPriority, tracker),
+                Instant.now().plusMillis(delayMillis));
+        log.debug("Deferred retry scheduled device={} point={} delay={}ms",
+                data.getDeviceId(), data.getPointCode(), delayMillis);
     }
 
     private void dispatchEvent(ReportIdentity identity,
@@ -354,7 +388,65 @@ public class CacheReportService {
             eventData.addMetadata("ruleName", eventInfo.ruleName());
         }
         eventData.addMetadata("pointAlias", point.getReportField());
+        if (point.getUnit() != null) {
+            eventData.addMetadata("unit", point.getUnit());
+        }
+        if (point.getDeviceName() != null) {
+            eventData.addMetadata("deviceName", point.getDeviceName());
+        }
         dispatch(eventData, reportConfig, true, null);
+    }
+
+    public void reportAlert(AlertNotification notification) {
+        if (!isMqttEnabled() || notification == null) {
+            return;
+        }
+        String deviceId = notification.getDeviceId();
+        if (deviceId == null || deviceId.isEmpty()) {
+            log.warn("Skip alert upload, deviceId missing");
+            return;
+        }
+        ReportConfig reportConfig = resolveReportConfig(deviceId);
+        if (reportConfig == null) {
+            log.warn("Skip alert upload, report config missing for {}", deviceId);
+            return;
+        }
+
+        ReportData alertData = new ReportData();
+        alertData.setDeviceId(deviceId);
+        alertData.setPointId(notification.getPointId());
+        String pointCode = Optional.ofNullable(notification.getPointCode())
+                .orElse(Optional.ofNullable(notification.getPointId()).orElse("alarm"));
+        alertData.setPointCode(pointCode);
+        alertData.setPointName(notification.getPointCode());
+        alertData.setMethod(MessageConstant.MESSAGE_TYPE_EVENT_POST);
+        long timestamp = notification.getTimestamp() > 0
+                ? notification.getTimestamp()
+                : System.currentTimeMillis();
+        alertData.setTimestamp(timestamp);
+        alertData.setValue(notification.getValue());
+        alertData.setQuality(QualityEnum.WARNING.getText());
+        alertData.addMetadata("eventType",
+                Optional.ofNullable(notification.getEventType()).orElse("ALARM"));
+        alertData.addMetadata("eventLevel",
+                Optional.ofNullable(notification.getLevel()).orElse("WARNING"));
+        alertData.addMetadata("eventMessage", notification.getMessage());
+        if (notification.getRuleId() != null) {
+            alertData.addMetadata("ruleId", notification.getRuleId());
+        }
+        if (notification.getRuleName() != null) {
+            alertData.addMetadata("ruleName", notification.getRuleName());
+        }
+        if (notification.getDeviceName() != null) {
+            alertData.addMetadata("deviceName", notification.getDeviceName());
+        }
+        if (notification.getUnit() != null) {
+            alertData.addMetadata("unit", notification.getUnit());
+        }
+        alertData.addMetadata("rawDeviceId", notification.getDeviceId());
+        alertData.addProperty(pointCode, notification.getValue(),
+                timestamp, QualityEnum.WARNING.getText());
+        dispatch(alertData, reportConfig, true, null);
     }
 
     @EventListener

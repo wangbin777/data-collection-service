@@ -7,6 +7,7 @@ import lombok.Value;
 @Builder
 public class AlertNotification {
     String deviceId;
+    String deviceName;
     String pointId;
     String pointCode;
     String ruleId;
@@ -15,5 +16,6 @@ public class AlertNotification {
     String message;
     String eventType;
     Object value;
+    String unit;
     long timestamp;
 }
