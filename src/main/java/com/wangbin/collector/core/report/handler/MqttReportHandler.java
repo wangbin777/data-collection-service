@@ -60,9 +60,10 @@ public class MqttReportHandler extends AbstractReportHandler {
             MqttConnectionConfig connConfig = getConnectionConfig(config);
 
             // 2. 获取MQTT客户端
-            MqttAsyncClient mqttClient = clientManager.getClient(connConfig);
-            if (mqttClient == null || !mqttClient.isConnected()) {
-                throw new MqttException(new Throwable("MQTT客户端未连接"));
+            MqttAsyncClient mqttClient = obtainConnectedClient(connConfig);
+            if (mqttClient == null) {
+                return buildOfflineResult(data, config,
+                        "MQTT client not connected, reconnect scheduled");
             }
 
             // 3. 构建发布选项
@@ -115,9 +116,13 @@ public class MqttReportHandler extends AbstractReportHandler {
 
         try {
             // 1. 获取MQTT客户端
-            MqttAsyncClient mqttClient = clientManager.getClient(connConfig);
-            if (mqttClient == null || !mqttClient.isConnected()) {
-                throw new MqttException(new Throwable("MQTT客户端未连接"));
+            MqttAsyncClient mqttClient = obtainConnectedClient(connConfig);
+            if (mqttClient == null) {
+                String offlineMessage = "MQTT client not connected, reconnect scheduled";
+                for (ReportData data : dataList) {
+                    results.add(buildOfflineResult(data, config, offlineMessage));
+                }
+                return results;
             }
 
             // 2. 批量发布消息
@@ -588,6 +593,40 @@ public class MqttReportHandler extends AbstractReportHandler {
         }
     }
 
+    private MqttAsyncClient obtainConnectedClient(MqttConnectionConfig connConfig) {
+        try {
+            MqttAsyncClient client = clientManager.getClient(connConfig);
+            if (client != null && client.isConnected()) {
+                return client;
+            }
+        } catch (Exception e) {
+            log.warn("获取MQTT客户端失败：{}", connConfig.getKey(), e);
+        }
+
+        if (!clientManager.tryReconnect(connConfig)) {
+            return null;
+        }
+
+        try {
+            MqttAsyncClient client = clientManager.getClient(connConfig);
+            if (client != null && client.isConnected()) {
+                return client;
+            }
+        } catch (Exception e) {
+            log.warn("重试获取MQTT客户端失败：{}", connConfig.getKey(), e);
+        }
+        return null;
+    }
+
+    private ReportResult buildOfflineResult(ReportData data, ReportConfig config, String message) {
+        ReportResult result = ReportResult.error(
+                data != null ? data.getPointCode() : "unknown",
+                message,
+                config != null ? config.getTargetId() : "unknown");
+        result.addMetadata("deferred", true);
+        return result;
+    }
+
     // =============== 内部类 ===============
 
     /**
@@ -727,13 +766,46 @@ public class MqttReportHandler extends AbstractReportHandler {
 
         public MqttAsyncClient getClient(MqttConnectionConfig config) throws MqttException {
             String configKey = config.getKey();
-            return clients.computeIfAbsent(configKey, key -> {
-                try {
-                    return createMqttClient(config);
-                } catch (MqttException e) {
-                    throw new RuntimeException("创建MQTT v5客户端失败", e);
+            clientConfigs.put(configKey, config);
+            try {
+                return clients.computeIfAbsent(configKey, key -> {
+                    try {
+                        return createMqttClient(config);
+                    } catch (MqttException e) {
+                        throw new RuntimeException("创建MQTT v5客户端失败", e);
+                    }
+                });
+            } catch (RuntimeException e) {
+                if (e.getCause() instanceof MqttException mqttException) {
+                    throw mqttException;
                 }
-            });
+                throw e;
+            }
+        }
+
+        public boolean tryReconnect(MqttConnectionConfig config) {
+            if (config == null) {
+                return false;
+            }
+            String configKey = config.getKey();
+            clientConfigs.put(configKey, config);
+            MqttAsyncClient client = clients.get(configKey);
+
+            try {
+                if (client == null) {
+                    MqttAsyncClient newClient = createMqttClient(config);
+                    clients.put(configKey, newClient);
+                    return true;
+                }
+                if (client.isConnected()) {
+                    return true;
+                }
+                connectClient(client, config);
+                return true;
+            } catch (MqttException e) {
+                log.warn("MQTT v5客户端重连失败：{}", configKey, e);
+                return false;
+            }
         }
 
         public void updateConnectionConfig(MqttConnectionConfig config) {
