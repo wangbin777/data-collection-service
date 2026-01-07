@@ -444,7 +444,12 @@ public class DataProcessorChain {
             nodeClone.setAlias(node.getAlias());
             nodeClone.setPriority(node.getPriority());
             nodeClone.setEnabled(node.isEnabled());
-            nodeClone.setConfig(node.getConfig());
+            Object config = node.getConfig();
+            if (config instanceof Map<?, ?> map) {
+                nodeClone.setConfig(new HashMap<>(map));
+            } else {
+                nodeClone.setConfig(config);
+            }
             clone.nodes.add(nodeClone);
         }
 

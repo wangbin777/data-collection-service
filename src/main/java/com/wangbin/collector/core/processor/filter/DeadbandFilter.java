@@ -7,8 +7,10 @@ import com.wangbin.collector.core.processor.ProcessResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 死区过滤器
@@ -21,12 +23,14 @@ public class DeadbandFilter extends AbstractDataProcessor {
     /**
      * 存储每个数据点的上一个有效值
      */
-    private final Map<String, Object> lastValues = new ConcurrentHashMap<>();
+    private final Map<String, LastSample> lastValues = new ConcurrentHashMap<>();
 
     /**
      * 默认死区值
      */
     private double defaultDeadband = 0.1;
+    private long sampleTtlMs = TimeUnit.MINUTES.toMillis(30);
+    private int maxCacheSize = 50000;
 
     public DeadbandFilter() {
         this.name = "DeadbandFilter";
@@ -51,11 +55,12 @@ public class DeadbandFilter extends AbstractDataProcessor {
             String pointKey = getPointKey(point);
 
             // 获取上一个值
-            Object lastValue = lastValues.get(pointKey);
+            LastSample lastSample = getValidSample(pointKey);
+            Object lastValue = lastSample != null ? lastSample.value : null;
 
             // 如果是第一次处理或者没有上次值，直接通过
             if (lastValue == null) {
-                lastValues.put(pointKey, rawValue);
+                cacheValue(pointKey, rawValue);
                 return ProcessResult.success(rawValue, rawValue, "首次处理");
             }
 
@@ -72,7 +77,7 @@ public class DeadbandFilter extends AbstractDataProcessor {
             }
 
             // 更新最后的值
-            lastValues.put(pointKey, rawValue);
+            cacheValue(pointKey, rawValue);
 
             return ProcessResult.success(rawValue, rawValue,
                     String.format("变化量 %.6f 超过死区阈值", change));
@@ -145,15 +150,60 @@ public class DeadbandFilter extends AbstractDataProcessor {
         return defaultDeadband;
     }
 
+    private LastSample getValidSample(String pointKey) {
+        LastSample sample = lastValues.get(pointKey);
+        if (sample == null) {
+            return null;
+        }
+        if (sampleTtlMs > 0 && System.currentTimeMillis() - sample.timestamp > sampleTtlMs) {
+            lastValues.remove(pointKey, sample);
+            return null;
+        }
+        return sample;
+    }
+
+    private void cacheValue(String pointKey, Object rawValue) {
+        lastValues.put(pointKey, new LastSample(rawValue, System.currentTimeMillis()));
+        trimCacheIfNecessary();
+    }
+
+    private void trimCacheIfNecessary() {
+        if (maxCacheSize <= 0) {
+            return;
+        }
+        int overflow = lastValues.size() - maxCacheSize;
+        if (overflow <= 0) {
+            return;
+        }
+        Iterator<Map.Entry<String, LastSample>> iterator = lastValues.entrySet().iterator();
+        while (iterator.hasNext() && overflow > 0) {
+            Map.Entry<String, LastSample> entry = iterator.next();
+            lastValues.remove(entry.getKey(), entry.getValue());
+            overflow--;
+        }
+    }
+
     @Override
     protected void loadConfig(Map<String, Object> config) {
         super.loadConfig(config);
         defaultDeadband = getDoubleConfig("defaultDeadband", 0.1);
+        sampleTtlMs = (long) getDoubleConfig("sampleTtlMs", sampleTtlMs);
+        maxCacheSize = getIntConfig("maxCacheSize", maxCacheSize);
     }
 
     @Override
     protected void doDestroy() throws Exception {
         lastValues.clear();
         log.info("死区过滤器销毁完成: {}", getName());
+    }
+
+    private static class LastSample {
+        private final Object value;
+        private final long timestamp;
+
+        private LastSample(Object value, long timestamp) {
+            this.value = value;
+            this.timestamp = timestamp;
+        }
     }
 }

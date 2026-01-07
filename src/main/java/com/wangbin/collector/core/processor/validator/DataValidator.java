@@ -68,7 +68,7 @@ public class DataValidator extends AbstractDataProcessor {
 
         try {
             double doubleValue = convertToDouble(value);
-            if (doubleValue == Double.NaN) {
+            if (Double.isNaN(doubleValue)) {
                 return false;
             }
 

@@ -1,10 +1,8 @@
 package com.wangbin.collector.common.utils;
 
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.wangbin.collector.common.domain.entity.AlarmRule;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;

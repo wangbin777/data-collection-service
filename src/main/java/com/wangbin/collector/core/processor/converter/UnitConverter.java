@@ -16,6 +16,9 @@ import java.util.Map;
 @Component
 public class UnitConverter extends AbstractDataProcessor {
 
+    private String contextUnitAttribute = "rawUnit";
+    private String additionalConfigUnitKey = "sourceUnit";
+
     public UnitConverter() {
         this.name = "UnitConverter";
         this.type = "CONVERTER";
@@ -32,7 +35,7 @@ public class UnitConverter extends AbstractDataProcessor {
     protected ProcessResult doProcess(ProcessContext context, DataPoint point, Object rawValue) throws Exception {
         try {
             // 检查是否需要单位转换
-            String sourceUnit = getSourceUnit(context);
+            String sourceUnit = getSourceUnit(context, point);
             String targetUnit = point.getUnit();
 
             if (sourceUnit == null || targetUnit == null ||
@@ -55,10 +58,20 @@ public class UnitConverter extends AbstractDataProcessor {
     /**
      * 获取源单位
      */
-    private String getSourceUnit(ProcessContext context) {
-        // 可以从上下文或数据点配置中获取源单位
-        // 这里简单实现，实际项目中可能需要从配置中读取
-        return "RAW"; // 假设原始数据没有单位
+    private String getSourceUnit(ProcessContext context, DataPoint point) {
+        Object ctxUnit = context != null ? context.getAttribute(contextUnitAttribute) : null;
+        if (ctxUnit instanceof String ctx && !ctx.isEmpty()) {
+            return ctx;
+        }
+
+        if (point != null && point.getAdditionalConfig() != null) {
+            Object extra = point.getAdditionalConfig().get(additionalConfigUnitKey);
+            if (extra instanceof String val && !val.isEmpty()) {
+                return val;
+            }
+        }
+
+        return point != null ? point.getUnit() : null;
     }
 
     /**
@@ -106,5 +119,12 @@ public class UnitConverter extends AbstractDataProcessor {
     @Override
     protected void doDestroy() throws Exception {
         log.info("单位转换器销毁完成: {}", getName());
+    }
+
+    @Override
+    protected void loadConfig(Map<String, Object> config) {
+        super.loadConfig(config);
+        contextUnitAttribute = getStringConfig("contextUnitAttribute", contextUnitAttribute);
+        additionalConfigUnitKey = getStringConfig("additionalConfigUnitKey", additionalConfigUnitKey);
     }
 }

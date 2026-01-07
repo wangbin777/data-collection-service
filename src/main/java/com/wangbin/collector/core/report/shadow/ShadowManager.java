@@ -154,13 +154,17 @@ public class ShadowManager {
         if (metadata != null) {
             Object eventFlag = metadata.get("eventTriggered");
             if (eventFlag instanceof Boolean bool && bool) {
-                return new EventInfo(null, null,
+                return new EventInfo(
+                        metadataToString(metadata, "ruleId"),
+                        metadataToString(metadata, "ruleName"),
                         String.valueOf(metadata.getOrDefault("eventLevel", "WARNING")),
                         String.valueOf(metadata.getOrDefault("eventMessage", result.getMessage())),
                         String.valueOf(metadata.getOrDefault("eventType", "EVENT")));
             }
             if (metadata.get("eventType") != null) {
-                return new EventInfo(null, null,
+                return new EventInfo(
+                        metadataToString(metadata, "ruleId"),
+                        metadataToString(metadata, "ruleName"),
                         String.valueOf(metadata.getOrDefault("eventLevel", "INFO")),
                         String.valueOf(metadata.getOrDefault("eventMessage", result.getMessage())),
                         String.valueOf(metadata.get("eventType")));
@@ -173,6 +177,14 @@ public class ShadowManager {
                     "QUALITY");
         }
         return null;
+    }
+
+    private String metadataToString(Map<String, Object> metadata, String key) {
+        if (metadata == null) {
+            return null;
+        }
+        Object value = metadata.get(key);
+        return value != null ? value.toString() : null;
     }
 
     private Double toDouble(Object value) {

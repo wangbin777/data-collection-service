@@ -109,14 +109,11 @@ public class ProcessorChainManager {
         // 5. 质量过滤器
         nodes.add(new ProcessorNode("QualityFilter", "质量过滤器", 50, true));
 
-        // 6. 数据计算器
-        nodes.add(new ProcessorNode("DataCalculator", "数据计算器", 60, true));
+        // 6. 数据质量处理器
+        nodes.add(new ProcessorNode("DataQualityProcessor", "数据质量处理器", 60, true));
 
         chain.setNodes(nodes);
-        chain.setDataProcessorManager(dataProcessorManager);
-
-        // 注册默认链
-        chains.put(DEFAULT_CHAIN_NAME, chain);
+        registerChain(chain);
 
         log.info("创建默认处理器链: {}", DEFAULT_CHAIN_NAME);
     }
@@ -141,9 +138,7 @@ public class ProcessorChainManager {
         fastNodes.add(new ProcessorNode("DeadbandFilter", "死区过滤器", 30, true));
 
         fastChain.setNodes(fastNodes);
-        fastChain.setDataProcessorManager(dataProcessorManager);
-
-        chains.put("fast", fastChain);
+        registerChain(fastChain);
         log.info("加载快速处理器链: fast");
 
         // 示例：创建一个质量检查链
@@ -158,9 +153,7 @@ public class ProcessorChainManager {
         qualityNodes.add(new ProcessorNode("QualityFilter", "质量过滤器", 20, true));
 
         qualityChain.setNodes(qualityNodes);
-        qualityChain.setDataProcessorManager(dataProcessorManager);
-
-        chains.put("quality", qualityChain);
+        registerChain(qualityChain);
         log.info("加载质量检查处理器链: quality");
     }
 

@@ -154,3 +154,11 @@ result.addMetadata("eventTriggered", true);
 result.addMetadata("eventType", "CUSTOM_EVENT");
 result.addMetadata("eventLevel", "WARNING");
 result.addMetadata("eventMessage", "test");
+
+
+
+## 优化
+1. 告警：维持原有 DataPoint.alarmEnabled=1 与 AlarmRule 配置即可；当告警发生时，AlertManager.getRecentAlerts() 会返回触发记录，上游依旧收到 CacheReportService 发出的事件上报。
+2. 单位：若采集值的原始单位与 DataPoint.unit 不同，可在 ProcessContext 写入 context.addAttribute("rawUnit", "°F") 或在数据点的 additionalConfig.sourceUnit 中声明；必要时可在配置里覆盖 contextUnitAttribute 和                   
+   additionalConfigUnitKey。
+3. 死区缓存：通过处理器配置中的 sampleTtlMs、maxCacheSize 控制缓存生命期。
