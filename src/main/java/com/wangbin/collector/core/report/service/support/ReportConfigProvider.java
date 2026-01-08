@@ -17,7 +17,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ???????????????????
+ * Provides cached MQTT reporting configuration for a specific gateway device.
  */
 @Component
 public class ReportConfigProvider {

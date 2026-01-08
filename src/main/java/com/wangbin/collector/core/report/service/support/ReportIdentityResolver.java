@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 
 /**
- * ???????????????????????
+ * Resolves report identities (productKey/deviceName) from point configuration.
  */
 @Component
 public class ReportIdentityResolver {

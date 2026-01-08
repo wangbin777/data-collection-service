@@ -6,7 +6,7 @@ import com.wangbin.collector.core.report.config.ReportProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * ???????????????????
+ * Throttles gateway reporting traffic to avoid overwhelming the broker.
  */
 @Component
 public class GatewayRateLimiter {

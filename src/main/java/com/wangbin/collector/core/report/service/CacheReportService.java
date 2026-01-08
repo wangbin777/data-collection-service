@@ -301,12 +301,8 @@ public class CacheReportService {
 
 
 
-    private void handleChunkResult(ReportData data,
-                                   ReportResult result,
-                                   Throwable throwable,
-                                   FlushTracker tracker,
-                                   String chunkKey,
-                                   ReportConfig config,
+    private void handleChunkResult(ReportData data,ReportResult result,Throwable throwable,
+                                   FlushTracker tracker,String chunkKey,ReportConfig config,
                                    boolean highPriority) {
         if (tracker == null) {
             return;

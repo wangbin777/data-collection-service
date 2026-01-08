@@ -16,7 +16,7 @@ class CacheReportServiceTest {
         ReportProperties props = new ReportProperties();
         props.setMaxPropertiesPerMessage(2);
         props.setMaxPayloadBytes(1024);
-        CacheReportService service = new CacheReportService(null, null, props, null);
+        CacheReportService service = new CacheReportService(null, props,null, null,null,null,null);
 
         ReportData snapshot = new ReportData();
         snapshot.setDeviceId("dev-test");
