@@ -868,7 +868,8 @@ public class MqttReportHandler extends AbstractReportHandler {
             String topic = template;
             String pk = defaultProductKey != null && !defaultProductKey.isEmpty() ? defaultProductKey : "+";
             topic = topic.replace("{productKey}", pk);
-            topic = topic.replace("{deviceName}", "+");
+            String device = targetId != null && !targetId.isEmpty() ? targetId : "+";
+            topic = topic.replace("{deviceName}", device);
             return topic;
         }
 
@@ -1194,6 +1195,10 @@ public class MqttReportHandler extends AbstractReportHandler {
 
                 log.info("MQTT v5客户端重新连接成功：{}", config.getBrokerUrl());
             } catch (MqttException e) {
+                if (e.getMessage() != null && e.getMessage().contains("已在进行连接")) {
+                    log.warn("MQTT v5客户端连接进行中，忽略本次重复连接请求：{}", config.getBrokerUrl());
+                    return;
+                }
                 log.error("MQTT v5客户端重新连接失败：{}", config.getBrokerUrl(), e);
                 throw e;
             }
