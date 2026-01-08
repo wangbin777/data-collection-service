@@ -130,6 +130,8 @@ public class MqttReportHandler extends AbstractReportHandler {
 
         List<ReportResult> results = new ArrayList<>(dataList.size());
         MqttConnectionConfig connConfig = getConnectionConfig(config);
+        List<PublishTask> publishTasks = new ArrayList<>(dataList.size());
+        List<AckManager.AckRegistration> ackRegistrations = new ArrayList<>(dataList.size());
 
         try {
             // 1. 获取MQTT客户端
@@ -143,23 +145,20 @@ public class MqttReportHandler extends AbstractReportHandler {
             }
 
             // 2. 批量发布消息
-        List<PublishTask> publishTasks = new ArrayList<>(dataList.size());
-        List<AckManager.AckRegistration> ackRegistrations = new ArrayList<>(dataList.size());
+            for (ReportData data : dataList) {
+                // 构建发布选项
+                MqttPublishOptions publishOptions = buildPublishOptions(data, config);
 
-        for (ReportData data : dataList) {
-            // 构建发布选项
-            MqttPublishOptions publishOptions = buildPublishOptions(data, config);
+                // 构建消息内容
+                byte[] messagePayload = buildMessagePayload(data, config);
 
-            // 构建消息内容
-            byte[] messagePayload = buildMessagePayload(data, config);
+                // 注册ACK监听
+                ackRegistrations.add(prepareAckRegistration(connConfig, data));
 
-            // 注册ACK监听
-            ackRegistrations.add(prepareAckRegistration(connConfig, data));
-
-            // 创建发布任务
-            PublishTask task = new PublishTask(
-                    mqttClient,
-                    publishOptions.getTopic(),
+                // 创建发布任务
+                PublishTask task = new PublishTask(
+                        mqttClient,
+                        publishOptions.getTopic(),
                         messagePayload,
                         publishOptions,
                         data.getPointCode(),
@@ -715,7 +714,7 @@ public class MqttReportHandler extends AbstractReportHandler {
         return result;
     }
 
-    private class AckManager {
+    private static class AckManager {
         private final ConcurrentHashMap<String, CompletableFuture<AckMessage>> pendingAcks = new ConcurrentHashMap<>();
 
         AckRegistration register(String messageId, boolean enabled) {
@@ -765,7 +764,7 @@ public class MqttReportHandler extends AbstractReportHandler {
             }
         }
 
-        private class AckRegistration {
+        private static class AckRegistration {
             private final String messageId;
             private final CompletableFuture<AckMessage> future;
             private final boolean enabled;
@@ -1164,7 +1163,7 @@ public class MqttReportHandler extends AbstractReportHandler {
                 MqttAsyncClient asyncClient = new MqttAsyncClient(brokerUrl, clientId, persistence);
 
                 MqttConnectionOptions options = buildConnectOptions(config);
-                asyncClient.setCallback(new MqttCallbackHandler(config));
+                asyncClient.setCallback(new MqttCallbackHandler(config, ackManager));
 
                 // 连接服务器
                 IMqttToken token = asyncClient.connect(options);
@@ -1268,23 +1267,25 @@ public class MqttReportHandler extends AbstractReportHandler {
     /**
      * MQTT v5 callback handler
      */
-    private class MqttCallbackHandler implements MqttCallback {
+    private static class MqttCallbackHandler implements MqttCallback {
         private final MqttConnectionConfig config;
+        private final AckManager ackManager;
 
-        private MqttCallbackHandler(MqttConnectionConfig config) {
+        private MqttCallbackHandler(MqttConnectionConfig config, AckManager ackManager) {
             this.config = config;
+            this.ackManager = ackManager;
         }
 
         @Override
         public void disconnected(MqttDisconnectResponse disconnectResponse) {
-            log.warn("MQTT v5?????{}?????{}",
+            log.warn("MQTT v5连接断开：{}，原因码：{}",
                     config.getBrokerUrl(),
                     disconnectResponse != null ? disconnectResponse.getReturnCode() : -1);
         }
 
         @Override
         public void mqttErrorOccurred(MqttException exception) {
-            log.error("MQTT v5???{}", config.getBrokerUrl(), exception);
+            log.error("MQTT v5错误：{}", config.getBrokerUrl(), exception);
         }
 
         @Override
@@ -1296,69 +1297,69 @@ public class MqttReportHandler extends AbstractReportHandler {
 
             int payloadLength = message != null && message.getPayload() != null
                     ? message.getPayload().length : 0;
-            log.debug("MQTT v5?????topic={} QoS={} bytes={}",
+            log.debug("MQTT v5消息接收：topic={} QoS={} bytes={}",
                     topic, message != null ? message.getQos() : -1, payloadLength);
         }
 
         @Override
         public void deliveryComplete(IMqttToken token) {
-            log.debug("MQTT v5?????????ID={}", token != null ? token.getMessageId() : -1);
+            log.debug("MQTT v5消息发布完成：消息ID={}", token != null ? token.getMessageId() : -1);
         }
 
         @Override
         public void connectComplete(boolean reconnect, String serverURI) {
-            log.info("MQTT v5??{}???{}", reconnect ? "??" : "??", serverURI);
+            log.info("MQTT v5连接{}完成：{}", reconnect ? "重连" : "初次", serverURI);
         }
 
         @Override
         public void authPacketArrived(int reasonCode, MqttProperties properties) {
-            log.debug("MQTT v5?????????{}", reasonCode);
+            log.debug("MQTT v5认证包到达：原因码{}", reasonCode);
         }
-    }
 
-    private void handleAckMessage(String topic, MqttMessage message) {
-        if (message == null || message.getPayload() == null) {
-            log.debug("??????ACK payload?topic={}", topic);
-            return;
-        }
-        try {
-            JsonNode root = OBJECT_MAPPER.readTree(message.getPayload());
-            JsonNode idNode = root.get("id");
-            if (idNode == null || idNode.isNull()) {
-                log.debug("MQTT ACK??id?topic={}", topic);
+        private void handleAckMessage(String topic, MqttMessage message) {
+            if (message == null || message.getPayload() == null) {
+                log.debug("接收到无有效ACK payload：topic={}", topic);
                 return;
             }
-            String messageId = idNode.asText(null);
-            if (messageId == null || messageId.isEmpty()) {
-                log.debug("MQTT ACK id???topic={}", topic);
-                return;
+            try {
+                JsonNode root = OBJECT_MAPPER.readTree(message.getPayload());
+                JsonNode idNode = root.get("id");
+                if (idNode == null || idNode.isNull()) {
+                    log.debug("MQTT ACK缺少id：topic={}", topic);
+                    return;
+                }
+                String messageId = idNode.asText(null);
+                if (messageId == null || messageId.isEmpty()) {
+                    log.debug("MQTT ACK id为空：topic={}", topic);
+                    return;
+                }
+                int code = parseAckCode(root);
+                String msgText = root.has("msg") && !root.get("msg").isNull()
+                        ? root.get("msg").asText("")
+                        : "";
+                ackManager.complete(messageId, AckMessage.received(messageId, code, msgText));
+                log.debug("MQTT ACK到达：id={} code={} topic={}", messageId, code, topic);
+            } catch (Exception e) {
+                log.warn("解析MQTT ACK 异常：topic={} err={}", topic, e.getMessage());
             }
-            int code = parseAckCode(root);
-            String msgText = root.has("msg") && !root.get("msg").isNull()
-                    ? root.get("msg").asText("")
-                    : "";
-            ackManager.complete(messageId, AckMessage.received(messageId, code, msgText));
-            log.debug("MQTT ACK???id={} code={} topic={}", messageId, code, topic);
-        } catch (Exception e) {
-            log.warn("??MQTT ACK ???topic={} err={}", topic, e.getMessage());
         }
-    }
 
-    private int parseAckCode(JsonNode root) {
-        if (root == null) {
-            return 0;
-        }
-        JsonNode codeNode = root.get("code");
-        if (codeNode == null || codeNode.isNull()) {
-            return 0;
-        }
-        if (codeNode.isInt()) {
-            return codeNode.asInt();
-        }
-        try {
-            return Integer.parseInt(codeNode.asText());
-        } catch (NumberFormatException ex) {
-            return 0;
+        private int parseAckCode(JsonNode root) {
+            if (root == null) {
+                return 0;
+            }
+            JsonNode codeNode = root.get("code");
+            if (codeNode == null || codeNode.isNull()) {
+                return 0;
+            }
+            if (codeNode.isInt()) {
+                return codeNode.asInt();
+            }
+            try {
+                return Integer.parseInt(codeNode.asText());
+            } catch (NumberFormatException ex) {
+                return 0;
+            }
         }
     }
 

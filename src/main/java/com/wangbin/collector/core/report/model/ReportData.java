@@ -24,7 +24,7 @@ public class ReportData {
     private static final Logger log = LoggerFactory.getLogger(ReportData.class);
 
     private String deviceId;
-    private String pointCode = "snapshot";
+    private String pointCode;
     private String pointId;
     private String pointName;
     private Object value;
@@ -140,9 +140,7 @@ public class ReportData {
 
         ReportData reportData = new ReportData();
         reportData.setDeviceId(deviceId);
-        reportData.setPointId(point.getPointId());
-        reportData.setPointCode(Optional.ofNullable(point.getPointCode()).orElse(point.getPointId()));
-        reportData.setPointName(point.getPointName());
+        applyPointInfo(reportData, point);
         reportData.setValue(value);
         reportData.setTimestamp(System.currentTimeMillis());
         reportData.setMethod(method);
@@ -155,7 +153,7 @@ public class ReportData {
         reportData.addMetadata("address", point.getAddress());
         reportData.addMetadata("unit", point.getUnit());
         reportData.addMetadata("dataType", point.getDataType());
-        reportData.addMetadata("pointCode", point.getPointCode());
+        reportData.addMetadata("pointCode", resolvePointCode(point));
         reportData.addMetadata("pointName", point.getPointName());
 
         long valueTimestamp = System.currentTimeMillis();
@@ -173,6 +171,33 @@ public class ReportData {
         String field = Optional.ofNullable(point.getReportField()).orElse(reportData.getPointCode());
         reportData.addProperty(field, value, valueTimestamp, qualityEnum.getText());
         return reportData;
+    }
+
+    public static void applyPointInfo(ReportData target, DataPoint point) {
+        if (target == null || point == null) {
+            return;
+        }
+        applyPointInfo(target, point.getPointId(), resolvePointCode(point), point.getPointName());
+    }
+
+    public static void applyPointInfo(ReportData target, String pointId, String pointCode, String pointName) {
+        if (target == null) {
+            return;
+        }
+        target.setPointId(pointId);
+        target.setPointCode(pointCode);
+        target.setPointName(pointName);
+    }
+
+    private static String resolvePointCode(DataPoint point) {
+        if (point == null) {
+            return null;
+        }
+        String pointCode = point.getPointCode();
+        if (pointCode != null && !pointCode.trim().isEmpty()) {
+            return pointCode;
+        }
+        return point.getPointId();
     }
 
     private static Object extractValue(Object cacheValue) {

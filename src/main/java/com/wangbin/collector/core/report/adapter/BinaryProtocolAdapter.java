@@ -6,105 +6,77 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 
 /**
- * 二进制协议编码器
+ * Binary protocol encoder.
  */
 @Slf4j
 public class BinaryProtocolAdapter {
 
+    private static final byte MAGIC_NUMBER = (byte) 0x7E;
+    private static final byte PROTOCOL_VERSION = 0x01;
+    private static final byte MESSAGE_TYPE_REQUEST = 0x01;
+    private final JsonProtocolAdapter jsonAdapter = new JsonProtocolAdapter();
+
     /**
-     * 编码为二进制数据
+     * Encode report data into the TCP binary packet defined in the mock docs.
      */
     public byte[] encodeToBinary(IoTMessage message) {
+        if (message == null) {
+            return null;
+        }
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
              DataOutputStream dos = new DataOutputStream(baos)) {
 
-            // 版本（1字节）
-            dos.writeByte(1);
+            byte[] messageIdBytes = toBytes(message.getMessageId());
+            byte[] methodBytes = toBytes(message.getMethod());
+            byte[] bodyBytes = buildBodyBytes(message);
 
-            // 方法类型长度 + 方法
-            writeString(dos, message.getMethod());
+            int totalLength = 7
+                    + Short.BYTES + messageIdBytes.length
+                    + Short.BYTES + methodBytes.length
+                    + bodyBytes.length;
 
-            // Message ID（如果有）
-            if (message.getMessageId() != null) {
-                writeString(dos, message.getMessageId());
-            } else {
-                dos.writeShort(0); // 长度为0
+            dos.writeByte(MAGIC_NUMBER);
+            dos.writeByte(PROTOCOL_VERSION);
+            dos.writeByte(MESSAGE_TYPE_REQUEST);
+            dos.writeInt(totalLength);
+
+            dos.writeShort(messageIdBytes.length);
+            if (messageIdBytes.length > 0) {
+                dos.write(messageIdBytes);
             }
 
-            // 认证相关字段（认证消息才有）
-            if (message.isAuthMessage()) {
-                writeString(dos, message.getProductKey());
-                writeString(dos, message.getDeviceName());
-                writeString(dos, message.getClientId());
-                writeString(dos, message.getUsername());
-                writeString(dos, message.getPassword());
-            } else {
-                // 业务参数编码
-                encodeParams(dos, message.getParams());
+            dos.writeShort(methodBytes.length);
+            if (methodBytes.length > 0) {
+                dos.write(methodBytes);
+            }
+
+            if (bodyBytes.length > 0) {
+                dos.write(bodyBytes);
             }
 
             dos.flush();
             return baos.toByteArray();
 
         } catch (Exception e) {
-            log.error("编码二进制消息失败", e);
+            log.error("Failed to encode binary message", e);
             return null;
         }
     }
 
-    private void writeString(DataOutputStream dos, String str) throws Exception {
-        if (str == null) {
-            dos.writeShort(0);
-        } else {
-            byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
-            dos.writeShort(bytes.length);
-            dos.write(bytes);
+    private byte[] buildBodyBytes(IoTMessage message) {
+        String jsonBody = jsonAdapter.encodeToJson(message);
+        if (jsonBody == null) {
+            return new byte[0];
         }
+        return jsonBody.getBytes(StandardCharsets.UTF_8);
     }
 
-    private void encodeParams(DataOutputStream dos, Map<String, Object> params) throws Exception {
-        if (params == null || params.isEmpty()) {
-            dos.writeShort(0);
-            return;
+    private byte[] toBytes(String value) {
+        if (value == null || value.isEmpty()) {
+            return new byte[0];
         }
-
-        // 参数数量
-        dos.writeShort(params.size());
-
-        for (Map.Entry<String, Object> entry : params.entrySet()) {
-            // 键
-            writeString(dos, entry.getKey());
-
-            // 值
-            Object value = entry.getValue();
-            if (value instanceof String) {
-                dos.writeByte(1); // 字符串类型
-                writeString(dos, (String) value);
-            } else if (value instanceof Number) {
-                if (value instanceof Integer) {
-                    dos.writeByte(2); // 整数类型
-                    dos.writeInt((Integer) value);
-                } else if (value instanceof Long) {
-                    dos.writeByte(3); // 长整数类型
-                    dos.writeLong((Long) value);
-                } else if (value instanceof Double) {
-                    dos.writeByte(4); // 双精度类型
-                    dos.writeDouble((Double) value);
-                } else {
-                    dos.writeByte(1);
-                    writeString(dos, value.toString());
-                }
-            } else if (value instanceof Boolean) {
-                dos.writeByte(5); // 布尔类型
-                dos.writeBoolean((Boolean) value);
-            } else {
-                // 其他类型转为字符串
-                dos.writeByte(1);
-                writeString(dos, value.toString());
-            }
-        }
+        return value.getBytes(StandardCharsets.UTF_8);
     }
 }

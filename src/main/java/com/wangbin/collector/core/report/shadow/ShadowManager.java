@@ -45,7 +45,7 @@ public class ShadowManager {
         if (field != null && point.isReportEnabled()) {
             QualityEnum qualityEnum = QualityEnum.fromCode(result.getQuality());
             ValueMeta meta = new ValueMeta(result.getFinalValue(), System.currentTimeMillis(), qualityEnum.getText());
-            shadow.update(field, meta);
+            shadow.update(field, meta, point);
             dirtyDevices.add(deviceId);
             changeTriggered = shouldTriggerChange(shadow, point, result, field);
         }

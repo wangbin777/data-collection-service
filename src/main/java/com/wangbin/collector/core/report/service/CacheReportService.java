@@ -55,6 +55,8 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class CacheReportService {
 
+    private static final String SNAPSHOT_POINT_CODE = "snapshot";
+
     private final ReportManager reportManager;
     private final ReportProperties reportProperties;
     private final ShadowManager shadowManager;
@@ -203,8 +205,6 @@ public class CacheReportService {
         ReportData data = new ReportData();
         data.setDeviceId(shadow.getDeviceId());
         data.setTimestamp(System.currentTimeMillis());
-        String snapshotCode = shadow.getDeviceId() != null ? shadow.getDeviceId() : "snapshot";
-        data.setPointCode(snapshotCode);
         data.addMetadata("schemaVersion", reportProperties.getSchemaVersion());
         data.addMetadata("seq", shadow.nextSeq());
         if (rawDeviceId != null) {
@@ -218,6 +218,12 @@ public class CacheReportService {
             data.addMetadata("productKey", productKey);
         }
         Map<String, ValueMeta> latest = shadow.snapshot();
+        DeviceShadow.PointInfo primaryPoint = resolvePrimaryPointInfo(shadow, latest);
+        if (primaryPoint != null) {
+            ReportData.applyPointInfo(data, primaryPoint.pointId(), primaryPoint.pointCode(), primaryPoint.pointName());
+        } else {
+            ReportData.applyPointInfo(data, SNAPSHOT_POINT_CODE, SNAPSHOT_POINT_CODE, "snapshot");
+        }
         latest.forEach((field, meta) -> data.addProperty(field, meta.getValue(), meta.getTimestamp(), meta.getQuality()));
         return data;
     }
@@ -254,12 +260,27 @@ public class CacheReportService {
         for (int i = 0; i < result.size(); i++) {
             ReportData chunk = result.get(i);
             if (result.size() > 1) {
-                String base = snapshot.getPointCode() != null ? snapshot.getPointCode() : "snapshot";
+                String base = snapshot.getPointCode() != null ? snapshot.getPointCode() : SNAPSHOT_POINT_CODE;
                 chunk.setPointCode(base + "-" + i);
             }
             chunk.applyChunkMetadata(batchId, i, result.size());
         }
         return result;
+    }
+
+    private DeviceShadow.PointInfo resolvePrimaryPointInfo(DeviceShadow shadow, Map<String, ValueMeta> latest) {
+        if (shadow == null) {
+            return null;
+        }
+        if (latest != null) {
+            for (String field : latest.keySet()) {
+                DeviceShadow.PointInfo info = shadow.getPointInfo(field);
+                if (info != null) {
+                    return info;
+                }
+            }
+        }
+        return shadow.snapshotPointInfos().values().stream().findFirst().orElse(null);
     }
 
     private void dispatch(ReportData data,
@@ -363,9 +384,7 @@ public class CacheReportService {
         }
         ReportData eventData = new ReportData();
         eventData.setDeviceId(deviceId);
-        eventData.setPointId(point.getPointId());
-        eventData.setPointCode(Optional.ofNullable(point.getPointCode()).orElse(point.getPointId()));
-        eventData.setPointName(point.getPointName());
+        ReportData.applyPointInfo(eventData, point);
         eventData.setTimestamp(System.currentTimeMillis());
         eventData.setMethod(MessageConstant.MESSAGE_TYPE_EVENT_POST);
         eventData.setValue(result.getFinalValue());

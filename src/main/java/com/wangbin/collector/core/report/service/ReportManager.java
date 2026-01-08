@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 /**
- * ????? - ?????????????
+ * 上报管理器：根据协议调度具体的上报处理器。
  */
 @Slf4j
 @Service
@@ -46,14 +46,14 @@ public class ReportManager {
 
     @PostConstruct
     public void init() {
-        log.info("????????...");
+        log.info("ReportManager 初始化...");
         registerHandlers();
-        log.info("???????????????: {}", handlers.keySet());
+        log.info("已启用的上报处理器: {}", handlers.keySet());
     }
 
     private void registerHandlers() {
         if (!reportProperties.isEnabled()) {
-            log.warn("collector.report.enabled=false????????");
+            log.warn("collector.report.enabled=false，已关闭上报功能");
             return;
         }
         for (ReportHandler candidate : handlerCandidates) {
@@ -62,15 +62,15 @@ public class ReportManager {
             }
             String protocol = candidate.getProtocol();
             if (!reportProperties.isProtocolEnabled(protocol)) {
-                log.info("?? {} ???????????", protocol);
+                log.info("跳过协议 {}，未在配置中启用", protocol);
                 continue;
             }
             try {
                 candidate.init();
                 handlers.put(protocol.toUpperCase(Locale.ROOT), candidate);
-                log.info("???????: {}", protocol);
+                log.info("注册上报处理器: {}", protocol);
             } catch (Exception e) {
-                log.error("???????? [{}] ??", protocol, e);
+                log.error("初始化上报处理器 [{}] 失败", protocol, e);
             }
         }
     }
@@ -89,29 +89,29 @@ public class ReportManager {
         if (data == null || config == null) {
             return ReportResult.error(
                     data != null ? data.getPointCode() : "unknown",
-                    "??????",
+                    "上报参数缺失",
                     config != null ? config.getTargetId() : "unknown"
             );
         }
 
         if (!config.validate()) {
             return ReportResult.error(data.getPointCode(),
-                    "??????", config.getTargetId());
+                    "上报配置校验失败", config.getTargetId());
         }
 
         try {
             ReportHandler handler = getHandler(config.getProtocol());
             if (handler == null) {
                 return ReportResult.error(data.getPointCode(),
-                        "????????: " + config.getProtocol(), config.getTargetId());
+                        "未找到协议处理器: " + config.getProtocol(), config.getTargetId());
             }
 
             return handler.report(data, config);
 
         } catch (Exception e) {
-            log.error("??????: {} -> {}", data.getPointCode(), config.getTargetId(), e);
+            log.error("上报失败: {} -> {}", data.getPointCode(), config.getTargetId(), e);
             return ReportResult.error(data.getPointCode(),
-                    "????: " + e.getMessage(), config.getTargetId());
+                    "上报异常: " + e.getMessage(), config.getTargetId());
         }
     }
 
@@ -127,7 +127,7 @@ public class ReportManager {
             List<ReportResult> errors = new ArrayList<>();
             for (ReportData data : dataList) {
                 errors.add(ReportResult.error(data.getPointCode(),
-                        "??????", config.getTargetId()));
+                        "上报配置校验失败", config.getTargetId()));
             }
             return errors;
         }
@@ -138,7 +138,7 @@ public class ReportManager {
                 List<ReportResult> errors = new ArrayList<>();
                 for (ReportData data : dataList) {
                     errors.add(ReportResult.error(data.getPointCode(),
-                            "????????: " + config.getProtocol(), config.getTargetId()));
+                            "未找到协议处理器: " + config.getProtocol(), config.getTargetId()));
                 }
                 return errors;
             }
@@ -146,11 +146,11 @@ public class ReportManager {
             return handler.batchReport(dataList, config);
 
         } catch (Exception e) {
-            log.error("??????: {}", config.getTargetId(), e);
+            log.error("批量上报失败: {}", config.getTargetId(), e);
             List<ReportResult> errors = new ArrayList<>();
             for (ReportData data : dataList) {
                 errors.add(ReportResult.error(data.getPointCode(),
-                        "??????: " + e.getMessage(), config.getTargetId()));
+                        "批量上报异常: " + e.getMessage(), config.getTargetId()));
             }
             return errors;
         }
@@ -174,7 +174,7 @@ public class ReportManager {
     }
 
     private List<ReportResult> reportCompressed(List<ReportData> dataList, ReportConfig config) {
-        log.debug("????????????: {}", dataList.size());
+        log.debug("压缩模式暂未实现差异化处理，按批量上报执行，数据量: {}", dataList.size());
         return batchReport(dataList, config);
     }
 
@@ -191,7 +191,7 @@ public class ReportManager {
 
     public void updateConfig(ReportConfig config) {
         if (config == null || !config.validate()) {
-            log.warn("???????????");
+            log.warn("上报配置无效，忽略更新");
             return;
         }
 
@@ -199,12 +199,12 @@ public class ReportManager {
             ReportHandler handler = getHandler(config.getProtocol());
             if (handler != null) {
                 handler.onConfigUpdate(config);
-                log.info("???????: {}", config.getTargetId());
+                log.info("已更新上报配置: {}", config.getTargetId());
             } else {
-                log.warn("?????????: {}", config.getProtocol());
+                log.warn("未找到对应协议处理器: {}", config.getProtocol());
             }
         } catch (Exception e) {
-            log.error("????????: {}", config.getTargetId(), e);
+            log.error("更新上报配置失败: {}", config.getTargetId(), e);
         }
     }
 
@@ -217,10 +217,10 @@ public class ReportManager {
             ReportHandler handler = getHandler(config.getProtocol());
             if (handler != null) {
                 handler.onConfigRemove(config);
-                log.info("???????: {}", config.getTargetId());
+                log.info("已移除上报配置: {}", config.getTargetId());
             }
         } catch (Exception e) {
-            log.error("????????: {}", config.getTargetId(), e);
+            log.error("移除上报配置失败: {}", config.getTargetId(), e);
         }
     }
 
@@ -245,31 +245,31 @@ public class ReportManager {
             try {
                 handler.resetStatistics();
             } catch (Exception e) {
-                log.error("?????????: {}", handler.getName(), e);
+                log.error("重置处理器统计失败: {}", handler.getName(), e);
             }
         }
-        log.info("??????????");
+        log.info("已重置全部上报统计");
     }
 
     @PreDestroy
     public void destroy() {
-        log.info("???????...");
+        log.info("ReportManager 销毁中...");
 
         for (ReportHandler handler : handlers.values()) {
             try {
                 handler.destroy();
             } catch (Exception e) {
-                log.error("???????: {}", handler.getName(), e);
+                log.error("销毁处理器失败: {}", handler.getName(), e);
             }
         }
         handlers.clear();
 
-        log.info("?????????");
+        log.info("ReportManager 已销毁");
     }
 
     private ReportResult disabledResult(ReportData data, ReportConfig config) {
         String pointCode = data != null ? data.getPointCode() : "unknown";
         String targetId = config != null ? config.getTargetId() : "unknown";
-        return ReportResult.error(pointCode, "???????", targetId);
+        return ReportResult.error(pointCode, "上报功能未开启", targetId);
     }
 }

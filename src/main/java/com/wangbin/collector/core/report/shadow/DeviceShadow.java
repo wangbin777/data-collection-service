@@ -1,8 +1,7 @@
 package com.wangbin.collector.core.report.shadow;
 
+import com.wangbin.collector.common.domain.entity.DataPoint;
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -18,6 +17,7 @@ public class DeviceShadow {
 
     private final String deviceId;
     private final Map<String, ValueMeta> latest = new ConcurrentHashMap<>();
+    private final Map<String, PointInfo> pointInfos = new ConcurrentHashMap<>();
     private final Map<String, Object> lastReportedValues = new ConcurrentHashMap<>();
     private final Map<String, Long> lastReportedTs = new ConcurrentHashMap<>();
     private final Map<String, Long> lastChangeTriggerAt = new ConcurrentHashMap<>();
@@ -33,8 +33,11 @@ public class DeviceShadow {
         this.lastReportAt = System.currentTimeMillis();
     }
 
-    public void update(String field, ValueMeta valueMeta) {
+    public void update(String field, ValueMeta valueMeta, DataPoint point) {
         latest.put(field, valueMeta);
+        if (point != null) {
+            pointInfos.put(field, new PointInfo(point.getPointId(), point.getPointCode(), point.getPointName()));
+        }
     }
 
     public ValueMeta getLatest(String field) {
@@ -43,6 +46,14 @@ public class DeviceShadow {
 
     public Map<String, ValueMeta> snapshot() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(latest));
+    }
+
+    public Map<String, PointInfo> snapshotPointInfos() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(pointInfos));
+    }
+
+    public PointInfo getPointInfo(String field) {
+        return pointInfos.get(field);
     }
 
     public boolean isEmpty() {
@@ -109,5 +120,8 @@ public class DeviceShadow {
         if (signature != null) {
             eventSignatureTimes.put(signature, timestamp);
         }
+    }
+
+    public record PointInfo(String pointId, String pointCode, String pointName) {
     }
 }
