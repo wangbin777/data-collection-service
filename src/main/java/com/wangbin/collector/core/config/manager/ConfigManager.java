@@ -1,6 +1,5 @@
 package com.wangbin.collector.core.config.manager;
 
-import com.wangbin.collector.common.domain.entity.CollectionConfig;
 import com.wangbin.collector.common.domain.entity.ConnectionInfo;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
@@ -43,11 +42,6 @@ public class ConfigManager {
      * 连接配置缓存 key:设备ID value:连接信息
      */
     private final Map<String, ConnectionInfo> connectionCache = new ConcurrentHashMap<>();
-
-    /**
-     * 采集配置缓存 key:设备ID value:采集配置
-     */
-    private final Map<String, CollectionConfig> collectionCache = new ConcurrentHashMap<>();
 
     /**
      * 读写锁，保证配置读写的线程安全
@@ -107,10 +101,6 @@ public class ConfigManager {
                     }
 
                     // 加载采集配置
-                    CollectionConfig collection = configSyncService.loadCollectionConfig(deviceId);
-                    if (collection != null) {
-                        collectionCache.put(deviceId, collection);
-                    }
 
                     log.debug("设备配置加载成功: {} - {}", deviceId, device.getDeviceName());
                 } catch (Exception e) {
@@ -178,7 +168,7 @@ public class ConfigManager {
     /**
      * 获取单个数据点配置
      *
-     * @param deviceId 设备ID
+     * @param deviceId  设备ID
      * @param pointCode 点位编码
      * @return 数据点配置，不存在返回null
      */
@@ -205,7 +195,7 @@ public class ConfigManager {
      * 根据pointId获取单个数据点配置
      *
      * @param deviceId 设备ID
-     * @param pointId 数据点ID
+     * @param pointId  数据点ID
      * @return 数据点配置，不存在返回null
      */
     public DataPoint getDataPointByPointId(String deviceId, String pointId) {
@@ -239,23 +229,6 @@ public class ConfigManager {
         lock.readLock().lock();
         try {
             return connectionCache.get(deviceId);
-        } finally {
-            lock.readLock().unlock();
-        }
-    }
-
-    /**
-     * 获取采集配置
-     *
-     * @param deviceId 设备ID
-     * @return 采集配置，不存在返回null
-     */
-    public CollectionConfig getCollectionConfig(String deviceId) {
-        Objects.requireNonNull(deviceId, "设备ID不能为空");
-
-        lock.readLock().lock();
-        try {
-            return collectionCache.get(deviceId);
         } finally {
             lock.readLock().unlock();
         }
@@ -314,7 +287,7 @@ public class ConfigManager {
      * 更新数据点配置
      *
      * @param deviceId 设备ID
-     * @param points 数据点列表
+     * @param points   数据点列表
      * @return 是否更新成功
      */
     public boolean updateDataPoints(String deviceId, List<DataPoint> points) {
@@ -399,7 +372,6 @@ public class ConfigManager {
                     .mapToInt(List::size)
                     .sum());
             stats.put("connectionCount", connectionCache.size());
-            stats.put("collectionCount", collectionCache.size());
             return stats;
         } finally {
             lock.readLock().unlock();
@@ -415,7 +387,6 @@ public class ConfigManager {
             deviceCache.clear();
             pointCache.clear();
             connectionCache.clear();
-            collectionCache.clear();
             log.info("所有配置缓存已清空");
         } finally {
             lock.writeLock().unlock();
@@ -475,9 +446,6 @@ public class ConfigManager {
                 case "connection":
                     reloadConnectionConfig(deviceId);
                     break;
-                case "collection":
-                    reloadCollectionConfig(deviceId);
-                    break;
                 case "all":
                     loadAllConfig();
                     break;
@@ -526,7 +494,6 @@ public class ConfigManager {
             deviceCache.remove(deviceId);
             pointCache.remove(deviceId);
             connectionCache.remove(deviceId);
-            collectionCache.remove(deviceId);
         } finally {
             lock.writeLock().unlock();
         }
@@ -580,31 +547,5 @@ public class ConfigManager {
             log.error("重新加载连接配置失败: {}", deviceId, e);
         }
     }
-
-    /**
-     * 重新加载采集配置
-     *
-     * @param deviceId 设备ID
-     */
-    private void reloadCollectionConfig(String deviceId) {
-        if (deviceId == null) {
-            log.warn("设备ID为空，跳过采集配置重载");
-            return;
-        }
-
-        try {
-            CollectionConfig collection = configSyncService.loadCollectionConfig(deviceId);
-            if (collection != null) {
-                lock.writeLock().lock();
-                try {
-                    collectionCache.put(deviceId, collection);
-                    log.info("采集配置重载成功: {}", deviceId);
-                } finally {
-                    lock.writeLock().unlock();
-                }
-            }
-        } catch (Exception e) {
-            log.error("重新加载采集配置失败: {}", deviceId, e);
-        }
-    }
 }
+

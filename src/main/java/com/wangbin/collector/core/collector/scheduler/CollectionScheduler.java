@@ -1,6 +1,5 @@
 package com.wangbin.collector.core.collector.scheduler;
 
-import com.wangbin.collector.common.domain.entity.CollectionConfig;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.manager.CollectionManager;
@@ -372,12 +371,6 @@ public class CollectionScheduler {
             }
 
             // 2. 获取采集配置
-            CollectionConfig collectionConfig =
-                    configManager.getCollectionConfig(deviceId);
-            if (collectionConfig == null || !collectionConfig.isValid()) {
-                log.error("设备 {} 的采集配置无效", deviceId);
-                return false;
-            }
 
             // 3. 获取数据点
             List<DataPoint> dataPoints = configManager.getDataPoints(deviceId);
@@ -400,7 +393,7 @@ public class CollectionScheduler {
             }
 
             // 6. 智能分组和调度（核心优化）
-            scheduleDevicePoints(deviceId, dataPoints, collectionConfig);
+            scheduleDevicePoints(deviceId, dataPoints);
 
             //列出执行计划
             collectionManager.rebuildReadPlans(deviceId,dataPoints);
@@ -423,14 +416,11 @@ public class CollectionScheduler {
     /**
      * 智能调度设备点位（核心优化算法）
      */
-    private void scheduleDevicePoints(String deviceId, List<DataPoint> points,CollectionConfig config) {
+    private void scheduleDevicePoints(String deviceId, List<DataPoint> points) {
         // 1. 智能批量分组
         List<List<DataPoint>> batches = smartBatchGrouping(points, deviceId);
 
         // 2. 计算每个批次的采集间隔
-        long interval = config.getCollectionIntervalMillis();
-        int batchesPerCycle = Math.max(1, (int) Math.ceil(batches.size() * interval / 1000.0));
-
         // 3. 将批次分配到不同时间片（错峰调度）
         for (int i = 0; i < batches.size(); i++) {
             List<DataPoint> batch = batches.get(i);
@@ -811,10 +801,7 @@ public class CollectionScheduler {
         for (String deviceId : deviceIds) {
             try {
                 DeviceInfo deviceInfo = configManager.getDevice(deviceId);
-                CollectionConfig collectionConfig =
-                        configManager.getCollectionConfig(deviceId);
-
-                if (deviceInfo != null && collectionConfig != null && collectionConfig.isValid()) {
+                if (deviceInfo != null && deviceInfo.getProtocolConfig() != null ) {
                     if (startDevice(deviceId)) {
                         successCount++;
                     } else {

@@ -4,7 +4,6 @@ package com.wangbin.collector.core.report.service.support;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.wangbin.collector.common.constant.ProtocolConstant;
-import com.wangbin.collector.common.domain.entity.CollectionConfig;
 import com.wangbin.collector.core.config.manager.ConfigManager;
 import com.wangbin.collector.core.report.config.ReportProperties;
 import com.wangbin.collector.core.report.model.ReportConfig;
@@ -23,12 +22,10 @@ import java.util.Optional;
 @Component
 public class ReportConfigProvider {
 
-    private final ConfigManager configManager;
     private final ReportProperties reportProperties;
     private final Cache<String, ReportConfig> cache;
 
     public ReportConfigProvider(ConfigManager configManager, ReportProperties reportProperties) {
-        this.configManager = configManager;
         this.reportProperties = reportProperties;
         this.cache = Caffeine.newBuilder()
                 .maximumSize(1000)
@@ -56,13 +53,11 @@ public class ReportConfigProvider {
             return null;
         }
 
-        CollectionConfig collectionConfig = configManager.getCollectionConfig(gatewayDeviceId);
-
         ReportConfig config = new ReportConfig();
         config.setProtocol(ProtocolConstant.PROTOCOL_MQTT);
         config.setHost(endpoint.host());
         config.setPort(endpoint.port());
-        config.setTargetId(resolveTargetId(gatewayDeviceId, collectionConfig));
+        config.setTargetId(gatewayDeviceId);
         config.setMaxRetryCount(reportProperties.getRetryTimes());
         config.setRetryInterval((int) reportProperties.getIntervalMs());
         config.setConnectTimeout(reportProperties.getTimeout());
@@ -74,9 +69,9 @@ public class ReportConfigProvider {
         params.put(ProtocolConstant.MQTT_PARAM_PASSWORD, mqtt.getPassword());
         params.put(ProtocolConstant.MQTT_PARAM_KEEP_ALIVE, mqtt.getKeepAliveInterval());
         params.put(ProtocolConstant.MQTT_PARAM_CLEAN_SESSION, mqtt.isCleanSession());
-        params.put(ProtocolConstant.MQTT_PARAM_PUBLISH_TOPIC, resolveTopicTemplate(collectionConfig, mqtt));
-        params.put("qos", resolveQos(collectionConfig, mqtt));
-        params.put("retained", resolveRetained(collectionConfig, mqtt));
+        params.put(ProtocolConstant.MQTT_PARAM_PUBLISH_TOPIC, mqtt.getDefaultTopicTemplate());
+        params.put("qos", mqtt.getQos());
+        params.put("retained", mqtt.isRetained());
         params.put(ProtocolConstant.MQTT_PARAM_ACK_TOPIC_TEMPLATE, mqtt.getAckTopicTemplate());
         params.put(ProtocolConstant.MQTT_PARAM_ACK_TIMEOUT, mqtt.getAckTimeoutMs());
         String fallbackProductKey = mqtt.getProductKey();
@@ -95,53 +90,6 @@ public class ReportConfigProvider {
         return template
                 .replace("{deviceId}", deviceId)
                 .replace("${deviceId}", deviceId);
-    }
-
-    private String resolveTargetId(String gatewayDeviceId, CollectionConfig config) {
-        if (config != null && config.getTargetId() != null && !config.getTargetId().isEmpty()) {
-            return config.getTargetId();
-        }
-        return gatewayDeviceId;
-    }
-
-    private String resolveTopicTemplate(CollectionConfig config, ReportProperties.Mqtt mqtt) {
-        String template = null;
-        Map<String, Object> reportParams = config != null ? config.getReportParams() : null;
-        if (reportParams != null && reportParams.get("reportTopic") != null) {
-            template = String.valueOf(reportParams.get("reportTopic"));
-        }
-        if (template == null || template.isEmpty()) {
-            template = mqtt.getDefaultTopicTemplate();
-        }
-        return template;
-    }
-
-    private int resolveQos(CollectionConfig config, ReportProperties.Mqtt mqtt) {
-        Map<String, Object> reportParams = config != null ? config.getReportParams() : null;
-        if (reportParams != null && reportParams.get("qos") != null) {
-            Object qos = reportParams.get("qos");
-            if (qos instanceof Number number) {
-                return number.intValue();
-            }
-            try {
-                return Integer.parseInt(qos.toString());
-            } catch (NumberFormatException ignore) {
-                // fall through
-            }
-        }
-        return mqtt.getQos();
-    }
-
-    private boolean resolveRetained(CollectionConfig config, ReportProperties.Mqtt mqtt) {
-        Map<String, Object> reportParams = config != null ? config.getReportParams() : null;
-        if (reportParams != null && reportParams.get("retain") != null) {
-            Object retain = reportParams.get("retain");
-            if (retain instanceof Boolean bool) {
-                return bool;
-            }
-            return Boolean.parseBoolean(retain.toString());
-        }
-        return mqtt.isRetained();
     }
 
     private BrokerEndpoint parseBrokerEndpoint(String brokerUrl) {

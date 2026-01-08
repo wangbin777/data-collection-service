@@ -2,7 +2,6 @@ package com.wangbin.collector.core.config.manager;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wangbin.collector.common.domain.entity.CollectionConfig;
 import com.wangbin.collector.common.domain.entity.ConnectionInfo;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
@@ -323,34 +322,6 @@ public class ConfigSyncService {
     }
 
 
-
-    /**
-     * 加载采集配置
-     *
-     * @param deviceId 设备ID
-     * @return 采集配置信息，加载失败返回null
-     */
-    public CollectionConfig loadCollectionConfig(String deviceId) {
-        try {
-            String url = ruoyiUrl + "/api/collector/config/collection/" + deviceId;
-
-            ResponseEntity<CollectionConfig> response = restTemplate.exchange(
-                    url, HttpMethod.GET, createAuthRequest(), CollectionConfig.class);
-
-            if (response.getStatusCode() == HttpStatus.OK) {
-                log.debug("成功加载采集配置: {}", deviceId);
-                return response.getBody();
-            } else {
-                log.warn("加载采集配置失败: {}，HTTP状态码: {}", deviceId, response.getStatusCode());
-            }
-        } catch (Exception e) {
-            log.error("加载采集配置失败: {}", deviceId, e);
-        }
-
-        //return null;
-        // 返回模拟数据
-        return DataUtils.createMockCollectionConfig(deviceId);
-    }
 
     /**
      * 获取远程配置版本信息
