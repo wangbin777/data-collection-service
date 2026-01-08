@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -96,6 +97,7 @@ public class CollectionScheduler {
     // 时间片配置
     private AtomicInteger TIME_SLICE_COUNT = new AtomicInteger(2);          // 动态时间片数量
     private AtomicInteger TIME_SLICE_INTERVAL = new AtomicInteger(1000);    // 动态时间片间隔（ms）
+    private TimeSliceTuner timeSliceTuner;
 
     @PostConstruct
     public void init() {
@@ -105,6 +107,8 @@ public class CollectionScheduler {
         TIME_SLICE_COUNT.set(normalizedSliceCount);
         int normalizedInterval = Math.max(minTimeSliceInterval, initialTimeSliceInterval);
         TIME_SLICE_INTERVAL.set(normalizedInterval);
+        int maxInterval = Math.max(defaultTimeSliceInterval * 2, normalizedInterval);
+        this.timeSliceTuner = new TimeSliceTuner(minTimeSliceInterval, maxInterval, normalizedInterval);
 
         // ============ 优化的线程池初始化 ============
 
@@ -914,20 +918,25 @@ public class CollectionScheduler {
             // 2. 计算新的时间片数量
             int newSliceCount = calculateOptimalSliceCount(activeDevices, totalTasks, cpuLoad);
             
-            // 3. 计算新的时间片间隔
+            // 3. 根据最新执行情况和超时标记进行调节
             long avgExecution = performanceMonitor.getAverageTimeSliceExecution();
-            int newSliceInterval = calculateOptimalSliceInterval(newSliceCount, cpuLoad, avgExecution);
+            boolean timeoutDetected = performanceMonitor.consumeTimeSliceTimeout();
+            int tunedInterval = timeSliceTuner != null
+                    ? timeSliceTuner.adjustInterval(TIME_SLICE_INTERVAL.get(), avgExecution, timeoutDetected)
+                    : TIME_SLICE_INTERVAL.get();
             
             // 4. 更新时间片配置
-            updateTimeSliceConfig(newSliceCount, newSliceInterval);
+            updateTimeSliceConfig(newSliceCount, tunedInterval);
 
-            log.info("动态调整时间片: 设备数={}, 任务数={}, CPU负载={}, 平均执行={}ms, 调整后片数={}, 片间隔={}ms",
+            log.info("动态调整时间片: 设备数={}, 任务数={}, CPU负载={}, 平均执行={}ms, 有超时={}, 调整后片数={}, 片间隔={}ms, 调整模式={}",
                     activeDevices,
                     totalTasks,
                     String.format("%.2f", cpuLoad),
                     avgExecution,
+                    timeoutDetected,
                     newSliceCount,
-                    newSliceInterval);
+                    tunedInterval,
+                    timeSliceTuner != null ? timeSliceTuner.getMode() : "UNKNOWN");
         } catch (Exception e) {
             log.error("动态调整时间片失败", e);
         }
@@ -955,45 +964,6 @@ public class CollectionScheduler {
     /**
      * 计算最优时间片间隔
      */
-    private int calculateOptimalSliceInterval(int sliceCount, double cpuLoad, long avgExecution) {
-        int currentInterval = TIME_SLICE_INTERVAL.get();
-        int targetInterval = currentInterval;
-
-        if (avgExecution <= 0) {
-            targetInterval = Math.max(minTimeSliceInterval, initialTimeSliceInterval);
-        } else {
-            long threshold = (long) (currentInterval * 0.9);
-            if (avgExecution >= threshold) {
-                // 执行时间逼近甚至超过窗口，主动拉长间隔
-                targetInterval = Math.min(
-                        (int) Math.max(avgExecution * 1.2, currentInterval + 100),
-                        defaultTimeSliceInterval * 2
-                );
-            } else if (avgExecution < currentInterval * 0.5 && cpuLoad < 0.5) {
-                // 执行余量充足，适当缩短
-                targetInterval = Math.max(minTimeSliceInterval, currentInterval / 2);
-            }
-        }
-
-        if (cpuLoad > 0.8) {
-            targetInterval = Math.min(defaultTimeSliceInterval * 2, targetInterval + 200);
-        } else if (cpuLoad < 0.3 && avgExecution < targetInterval) {
-            targetInterval = Math.max(minTimeSliceInterval, targetInterval - 100);
-        }
-
-        // 平滑调整，避免每次跳跃过大
-        int maxStep = Math.max(100, currentInterval / 3);
-        if (targetInterval > currentInterval + maxStep) {
-            targetInterval = currentInterval + maxStep;
-        } else if (targetInterval < currentInterval - maxStep) {
-            targetInterval = currentInterval - maxStep;
-        }
-
-        targetInterval = Math.max(minTimeSliceInterval, targetInterval);
-        targetInterval = Math.min(defaultTimeSliceInterval * 2, targetInterval);
-        return targetInterval;
-    }
-    
     /**
      * 更新时间片配置
      */
@@ -1195,6 +1165,7 @@ public class CollectionScheduler {
         // 瓶颈分析
         private final Map<String, Long> slowestDevices = new ConcurrentHashMap<>(); // 最慢的设备列表
         private final Map<Integer, Long> overloadedSlices = new ConcurrentHashMap<>(); // 过载的时间片
+        private final AtomicBoolean recentTimeSliceTimeout = new AtomicBoolean(false);
         
         // 统计周期
         private static final long STATISTICS_CYCLE = 60000; // 60秒统计周期
@@ -1206,6 +1177,7 @@ public class CollectionScheduler {
             // 检查时间片是否过载（执行时间超过时间片间隔）
             if (executionTime > TIME_SLICE_INTERVAL.get()) {
                 overloadedSlices.put(sliceIndex, executionTime);
+                recentTimeSliceTimeout.set(true);
             }
         }
 
@@ -1392,6 +1364,10 @@ public class CollectionScheduler {
                 }
             }
             return count == 0 ? 0 : sum / count;
+        }
+
+        boolean consumeTimeSliceTimeout() {
+            return recentTimeSliceTimeout.getAndSet(false);
         }
     }
 

@@ -992,6 +992,9 @@ public class MqttReportHandler extends AbstractReportHandler {
     private static class MqttClientManager {
         private final Map<String, MqttAsyncClient> clients = new ConcurrentHashMap<>();
         private final Map<String, MqttConnectionConfig> clientConfigs = new ConcurrentHashMap<>();
+        private final Map<String, Long> lastReconnectErrorLog = new ConcurrentHashMap<>();
+        //每10秒打印一次错误
+        private static final long ERROR_LOG_INTERVAL_MS = 10000L;
         private ScheduledExecutorService monitorExecutor;
         private final AckManager ackManager;
 
@@ -1044,7 +1047,7 @@ public class MqttReportHandler extends AbstractReportHandler {
                 connectClient(client, config);
                 return true;
             } catch (MqttException e) {
-                log.warn("MQTT v5客户端重连失败：{}", configKey, e);
+                logReconnectFailure(configKey, config.getBrokerUrl(), e);
                 return false;
             }
         }
@@ -1195,12 +1198,23 @@ public class MqttReportHandler extends AbstractReportHandler {
 
                 log.info("MQTT v5客户端重新连接成功：{}", config.getBrokerUrl());
             } catch (MqttException e) {
-                if (e.getMessage() != null && e.getMessage().contains("已在进行连接")) {
-                    log.warn("MQTT v5客户端连接进行中，忽略本次重复连接请求：{}", config.getBrokerUrl());
+                String message = e.getMessage();
+                if (message != null && (message.contains("已在进行连接") || message.contains("正在断开连接"))) {
+                    log.warn("MQTT v5客户端处于过渡状态（{}），忽略本次请求：{}", message, config.getBrokerUrl());
                     return;
                 }
-                log.error("MQTT v5客户端重新连接失败：{}", config.getBrokerUrl(), e);
                 throw e;
+            }
+        }
+
+        private void logReconnectFailure(String configKey, String brokerUrl, Exception e) {
+            long now = System.currentTimeMillis();
+            Long last = lastReconnectErrorLog.get(configKey);
+            if (last == null || now - last >= ERROR_LOG_INTERVAL_MS) {
+                lastReconnectErrorLog.put(configKey, now);
+                log.warn("MQTT v5客户端重连失败：{} ({})", configKey, brokerUrl, e);
+            } else {
+                log.debug("忽略重复的MQTT重连失败日志 {}: {}", configKey, e.getMessage());
             }
         }
 
