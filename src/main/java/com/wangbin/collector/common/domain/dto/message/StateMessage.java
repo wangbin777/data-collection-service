@@ -1,5 +1,6 @@
 package com.wangbin.collector.common.domain.dto.message;
 
+import com.wangbin.collector.common.constant.MessageConstant;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -23,7 +24,7 @@ public class StateMessage extends BaseMessage {
     }
 
     public StateMessage(String deviceId, String status) {
-        super("thing.state.update", null);
+        super(MessageConstant.MESSAGE_TYPE_STATE_UPDATE, null);
         this.deviceId = deviceId;
         this.status = status;
     }

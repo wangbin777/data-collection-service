@@ -1,5 +1,6 @@
 package com.wangbin.collector.common.domain.dto.message;
 
+import com.wangbin.collector.common.constant.MessageConstant;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -26,7 +27,7 @@ public class EventMessage extends BaseMessage {
 
     public EventMessage(String deviceId, String eventType, String eventLevel,
                         String eventMessage, Map<String, Object> eventData) {
-        super("thing.event.post", eventData);
+        super(MessageConstant.MESSAGE_TYPE_EVENT_POST, eventData);
         this.deviceId = deviceId;
         this.eventType = eventType;
         this.eventLevel = eventLevel;

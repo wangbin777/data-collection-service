@@ -1,5 +1,6 @@
 package com.wangbin.collector.common.domain.dto.message;
 
+import com.wangbin.collector.common.constant.MessageConstant;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -21,7 +22,7 @@ public class PropertyMessage extends BaseMessage {
     }
 
     public PropertyMessage(String deviceId, Map<String, Object> properties) {
-        super("thing.property.post", properties);
+        super(MessageConstant.MESSAGE_TYPE_PROPERTY_POST, properties);
         this.deviceId = deviceId;
     }
 
