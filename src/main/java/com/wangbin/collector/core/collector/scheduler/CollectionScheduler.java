@@ -10,6 +10,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -41,16 +42,16 @@ public class CollectionScheduler {
     // ================== 优化的线程池配置 ==================
 
     // 1. 时间片调度器 - 负责宏观调度
-    private ScheduledExecutorService timeSliceScheduler;
+    private final ScheduledExecutorService timeSliceScheduler;
 
     // 2. 批量任务分发器 - 负责任务分发
-    private ExecutorService batchDispatcher;
+    private final ExecutorService batchDispatcher;
 
     // 3. 异步采集执行器 - 负责实际采集（IO密集型）
-    private ThreadPoolExecutor asyncCollectorPool;
+    private final ThreadPoolExecutor asyncCollectorPool;
 
     // 4. 数据处理执行器 - 负责数据处理（CPU密集型）
-    private ThreadPoolExecutor dataProcessorPool;
+    private final ThreadPoolExecutor dataProcessorPool;
 
     // ================== 调度数据结构 ==================
 
@@ -105,6 +106,18 @@ public class CollectionScheduler {
     private AtomicInteger TIME_SLICE_INTERVAL = new AtomicInteger(1000);    // 动态时间片间隔（ms）
     private TimeSliceTuner timeSliceTuner;
 
+    @Autowired
+    public CollectionScheduler(
+            @Qualifier("timeSliceScheduler") ScheduledExecutorService timeSliceScheduler,
+            @Qualifier("batchDispatcherExecutor") ExecutorService batchDispatcher,
+            @Qualifier("asyncCollectorExecutor") ThreadPoolExecutor asyncCollectorPool,
+            @Qualifier("dataProcessorExecutor") ThreadPoolExecutor dataProcessorPool) {
+        this.timeSliceScheduler = timeSliceScheduler;
+        this.batchDispatcher = batchDispatcher;
+        this.asyncCollectorPool = asyncCollectorPool;
+        this.dataProcessorPool = dataProcessorPool;
+    }
+
     @PostConstruct
     public void init() {
         // 获取服务器CPU核心数
@@ -116,47 +129,7 @@ public class CollectionScheduler {
         int maxInterval = Math.max(defaultTimeSliceInterval * 2, normalizedInterval);
         this.timeSliceTuner = new TimeSliceTuner(minTimeSliceInterval, maxInterval, normalizedInterval);
 
-        // ============ 优化的线程池初始化 ============
-
-        // 1. 时间片调度器（核心调度，不宜过多）
-        timeSliceScheduler = new ScheduledThreadPoolExecutor(
-                Math.max(2, cpuCores / 4),  // 根据CPU核心数调整
-                new NamedThreadFactory("time-slice-scheduler")
-        );
-
-        // 2. 批量任务分发器
-        batchDispatcher = new ThreadPoolExecutor(
-                cpuCores,                    // 核心线程数 = CPU核心数
-                cpuCores * 2,                // 最大线程数
-                60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(1000),
-                new NamedThreadFactory("batch-dispatcher")
-        );
-
-        // 3. 异步采集执行器（IO密集型，可设置较多线程）
-        asyncCollectorPool = new ThreadPoolExecutor(
-                cpuCores * 4,                // 核心线程数
-                cpuCores * 8,                // 最大线程数
-                30L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(10000),
-                new NamedThreadFactory("async-collector") {
-                    @Override
-                    public Thread newThread(Runnable r) {
-                        Thread thread = super.newThread(r);
-                        thread.setDaemon(true);  // 设为守护线程
-                        return thread;
-                    }
-                }
-        );
-
-        // 4. 数据处理执行器（CPU密集型）
-        dataProcessorPool = new ThreadPoolExecutor(
-                cpuCores,                    // 核心线程数 = CPU核心数
-                cpuCores * 2,                // 最大线程数
-                30L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(5000),
-                new NamedThreadFactory("data-processor")
-        );
+        // 线程池由 ThreadPoolConfig 统一注入，确保与调度器配置一至
 
         // 初始化时间片任务表
         for (int i = 0; i < TIME_SLICE_COUNT.get(); i++) {
@@ -1556,23 +1529,4 @@ public class CollectionScheduler {
         }
     }
 
-    /**
-     * 命名线程工厂
-     */
-    private static class NamedThreadFactory implements ThreadFactory {
-        private final String namePrefix;
-        private final AtomicInteger threadNumber = new AtomicInteger(1);
-
-        NamedThreadFactory(String namePrefix) {
-            this.namePrefix = namePrefix;
-        }
-
-        @Override
-        public Thread newThread(Runnable r) {
-            Thread thread = new Thread(r, namePrefix + "-" + threadNumber.getAndIncrement());
-            thread.setPriority(Thread.NORM_PRIORITY);
-            thread.setDaemon(true);
-            return thread;
-        }
-    }
 }

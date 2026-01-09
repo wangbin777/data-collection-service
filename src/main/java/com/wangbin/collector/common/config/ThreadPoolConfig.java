@@ -11,6 +11,75 @@ import java.util.concurrent.*;
 @Configuration
 public class ThreadPoolConfig {
 
+    private final int cpuCores = Runtime.getRuntime().availableProcessors();
+
+    private ThreadFactory buildNamedThreadFactory(String prefix, boolean daemon) {
+        return new ThreadFactoryBuilder()
+                .setNameFormat(prefix + "-%d")
+                .setDaemon(daemon)
+                .setPriority(Thread.NORM_PRIORITY)
+                .build();
+    }
+
+    /**
+     * 时间片调度线程池（调度器核心任务）
+     */
+    @Bean(name = "timeSliceScheduler", destroyMethod = "shutdown")
+    public ScheduledExecutorService timeSliceScheduler() {
+        int poolSize = Math.max(2, cpuCores / 4);
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(
+                poolSize,
+                buildNamedThreadFactory("time-slice-scheduler", true)
+        );
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
+    }
+
+    /**
+     * 批量任务分发线程池
+     */
+    @Bean(name = "batchDispatcherExecutor", destroyMethod = "shutdown")
+    public ThreadPoolExecutor batchDispatcherExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                cpuCores,
+                cpuCores * 2,
+                60L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(1000),
+                buildNamedThreadFactory("batch-dispatcher", true)
+        );
+        return executor;
+    }
+
+    /**
+     * 异步采集线程池（IO密集型）
+     */
+    @Bean(name = "asyncCollectorExecutor", destroyMethod = "shutdown")
+    public ThreadPoolExecutor asyncCollectorExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                cpuCores * 4,
+                cpuCores * 8,
+                30L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(10000),
+                buildNamedThreadFactory("async-collector", true)
+        );
+        return executor;
+    }
+
+    /**
+     * 数据处理线程池（CPU密集型）
+     */
+    @Bean(name = "dataProcessorExecutor", destroyMethod = "shutdown")
+    public ThreadPoolExecutor dataProcessorExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                cpuCores,
+                cpuCores * 2,
+                30L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(5000),
+                buildNamedThreadFactory("data-processor", true)
+        );
+        return executor;
+    }
+
     /**
      * 采集任务线程池
      */
