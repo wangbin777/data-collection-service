@@ -67,7 +67,7 @@ public class DeviceInfo {
     // ==================== 采集配置 ====================
 
     /** 数据采集间隔（秒） */
-    private Integer collectionInterval;
+    private Integer collectionInterval = 2000;
 
     /** 数据上报间隔（秒） */
     private Integer reportInterval;

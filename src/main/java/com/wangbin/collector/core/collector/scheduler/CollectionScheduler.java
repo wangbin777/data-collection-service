@@ -92,7 +92,14 @@ public class CollectionScheduler {
 
     @Value("${collector.scheduler.collect-timeout-ms:500}")
     private long collectTimeoutMs;
-
+    
+    // 自适应采集配置
+    @Value("${collector.adaptive-collection.enabled:true}")
+    private boolean adaptiveCollectionEnabled;
+    
+    @Value("${collector.adaptive-collection.adjust-window-ms:60000}")
+    private long adaptiveAdjustWindow;
+    
     // 时间片配置
     private AtomicInteger TIME_SLICE_COUNT = new AtomicInteger(2);          // 动态时间片数量
     private AtomicInteger TIME_SLICE_INTERVAL = new AtomicInteger(1000);    // 动态时间片间隔（ms）
@@ -370,13 +377,27 @@ public class CollectionScheduler {
                 return false;
             }
 
-            // 2. 获取采集配置
+            // 2. 获取设备的采集间隔（从设备配置或默认值获取）
+            // 由于 collectionConfig 已被删除，这里使用默认采集间隔
 
             // 3. 获取数据点
             List<DataPoint> dataPoints = configManager.getDataPoints(deviceId);
             if (dataPoints.isEmpty()) {
                 log.warn("设备 {} 没有配置数据点", deviceId);
                 return false;
+            }
+            
+            // 4. 初始化数据点的自适应采集配置
+            if (adaptiveCollectionEnabled) {
+                for (DataPoint dataPoint : dataPoints) {
+                    AdaptiveCollectionUtil.initDataPointAdaptiveConfig(
+                            dataPoint,
+                            deviceInfo.getCollectionInterval(),
+                            null, // 使用默认最小间隔
+                            null, // 使用默认最大间隔
+                            null  // 使用默认变化率阈值
+                    );
+                }
             }
 
             // 4. 注册设备

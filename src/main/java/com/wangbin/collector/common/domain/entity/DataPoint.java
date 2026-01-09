@@ -195,6 +195,55 @@ public class DataPoint {
      * 示例: {"byteOrder": "BIG_ENDIAN", "registerType": "HOLDING_REGISTER"}
      */
     private Map<String, Object> additionalConfig;
+    
+    /**
+     * 自适应采集相关字段
+     */
+    
+    /**
+     * 基础采集间隔（毫秒）
+     */
+    private long baseCollectionInterval;
+    
+    /**
+     * 当前采集间隔（毫秒）
+     */
+    private long currentCollectionInterval;
+    
+    /**
+     * 最小采集间隔（毫秒）
+     */
+    private long minCollectionInterval;
+    
+    /**
+     * 最大采集间隔（毫秒）
+     */
+    private long maxCollectionInterval;
+    
+    /**
+     * 变化率阈值（百分比）
+     */
+    private double changeThreshold;
+    
+    /**
+     * 连续稳定次数
+     */
+    private int stableCount;
+    
+    /**
+     * 上次采集值
+     */
+    private Object lastValue;
+    
+    /**
+     * 最近变化率（百分比）
+     */
+    private double changeRate;
+    
+    /**
+     * 上次调整时间（毫秒时间戳）
+     */
+    private long lastAdjustTime;
 
     /**
      * 获取实际值（考虑缩放因子和偏移量）
@@ -507,4 +556,5 @@ public class DataPoint {
                 id, pointCode, pointName, deviceId, address, dataType, unit, status
         );
     }
+
 }

@@ -43,13 +43,25 @@ spring:
       thread-name-prefix: async-task-
 
 collector:
+  #自适应采集配置
+  adaptive-collection:
+    enabled: true          # 自适应采集开关，默认开启
+    adjust-window-ms: 60000 # 调整窗口，默认1分钟
+  #采集任务调度配置
   scheduler:
+    # 初始时间片数量：调度器启动时分配给每个任务的时间片数量
     initial-time-slice-count: 4
+    # 最大时间片数量：每个任务最多可以获得的时间片数量上限
     max-time-slice-count: 12
+    # 最小时间片间隔（毫秒）：两个时间片之间的最小时间间隔，防止过度频繁调度
     min-time-slice-interval-ms: 300
+    # 默认时间片间隔（毫秒）：默认情况下时间片的时间长度
     default-time-slice-interval-ms: 1500
+    # 初始时间片间隔（毫秒）：调度器启动时使用的时间片间隔
     initial-time-slice-interval-ms: 1500
+    # 动态调整间隔（毫秒）：调度器动态调整时间片分配策略的时间间隔
     dynamic-adjust-interval-ms: 60000
+    # 收集超时时间（毫秒）：等待任务执行结果或状态收集的最大等待时间
     collect-timeout-ms: 800
 
   config:
