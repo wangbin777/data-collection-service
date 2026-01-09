@@ -33,16 +33,12 @@ public class ReportConfig {
         }
 
         String protocolUpper = protocol.toUpperCase();
-        switch (protocolUpper) {
-            case ProtocolConstant.PROTOCOL_HTTP:
-                return url != null && !url.trim().isEmpty();
-            case ProtocolConstant.PROTOCOL_MQTT:
-            case ProtocolConstant.PROTOCOL_TCP:
-            case ProtocolConstant.PROTOCOL_WEBSOCKET:
-                return host != null && !host.trim().isEmpty() && getEffectivePort() > 0;
-            default:
-                return false;
-        }
+        return switch (protocolUpper) {
+            case ProtocolConstant.PROTOCOL_HTTP -> url != null && !url.trim().isEmpty();
+            case ProtocolConstant.PROTOCOL_MQTT, ProtocolConstant.PROTOCOL_TCP, ProtocolConstant.PROTOCOL_WEBSOCKET ->
+                    host != null && !host.trim().isEmpty() && getEffectivePort() > 0;
+            default -> false;
+        };
     }
 
     /**

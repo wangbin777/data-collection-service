@@ -1,7 +1,5 @@
 package com.wangbin.collector.common.domain.entity;
 
-import com.wangbin.collector.common.domain.entity.AlarmRule;
-
 import lombok.Data;
 
 import java.util.Date;
