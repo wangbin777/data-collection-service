@@ -390,13 +390,7 @@ public class CollectionScheduler {
             // 4. 初始化数据点的自适应采集配置
             if (adaptiveCollectionEnabled) {
                 for (DataPoint dataPoint : dataPoints) {
-                    AdaptiveCollectionUtil.initDataPointAdaptiveConfig(
-                            dataPoint,
-                            deviceInfo.getCollectionInterval(),
-                            null, // 使用默认最小间隔
-                            null, // 使用默认最大间隔
-                            null  // 使用默认变化率阈值
-                    );
+                    AdaptiveCollectionUtil.initDataPointAdaptiveConfig(dataPoint);
                 }
             }
 
@@ -748,6 +742,7 @@ public class CollectionScheduler {
         try {
             collectionManager.connectDevice(deviceId);
             connectionStates.put(deviceId, new ConnectionState(true, System.currentTimeMillis()));
+            configManager.getDataPointsAndAdaptiveConfig(deviceId);
             return true;
         } catch (Exception e) {
             log.error("设备 {} 连接失败", deviceId, e);
@@ -878,6 +873,17 @@ public class CollectionScheduler {
             if (value != null) {
                 // TODO: 数据持久化、报警检查等
                 performanceMonitor.recordDataProcessed(deviceId);
+
+                // 如果设备之前有异常，现在恢复正常，重置自适应配置
+                DevicePerformance perf = performanceMonitor.devicePerformance.get(deviceId);
+                if (perf != null && perf.consecutiveFailureCount > 0) {
+                    AdaptiveCollectionUtil.resetAdaptiveConfig(point);
+                }
+
+                // 自适应采集频率调整
+                if (adaptiveCollectionEnabled) {
+                    AdaptiveCollectionUtil.adjustCollectionFrequency(deviceId, point, value,adaptiveAdjustWindow);
+                }
             }
         }
     }
@@ -1084,6 +1090,7 @@ public class CollectionScheduler {
             timeSliceScheduler.schedule(() -> {
                 stopDevice(deviceId);
                 startDevice(deviceId);
+                configManager.getDataPointsAndAdaptiveConfig(deviceId);
             }, 1, TimeUnit.SECONDS);
         }
     }

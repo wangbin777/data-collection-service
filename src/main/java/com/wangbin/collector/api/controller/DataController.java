@@ -2,17 +2,14 @@ package com.wangbin.collector.api.controller;
 
 import com.wangbin.collector.core.cache.manager.MultiLevelCacheManager;
 import com.wangbin.collector.core.cache.model.CacheKey;
+import com.wangbin.collector.core.collector.scheduler.AdaptiveCollectionUtil;
 import com.wangbin.collector.core.config.manager.ConfigManager;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.core.processor.ProcessResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -242,5 +239,24 @@ public class DataController {
             target.put("value", cachedValue);
             target.put("rawValue", cachedValue);
         }
+    }
+
+
+    @PostMapping("/device/{deviceId}/reset-adaptive")
+    public Map<String, Object> resetAdaptiveConfig(@PathVariable String deviceId) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            List<DataPoint> dataPoints = configManager.getDataPoints(deviceId);
+            for (DataPoint point : dataPoints) {
+                AdaptiveCollectionUtil.resetAdaptiveConfig(point);
+            }
+            result.put("code", 200);
+            result.put("message", "重置成功");
+        } catch (Exception e) {
+            log.error("重置设备 {} 自适应配置失败", deviceId, e);
+            result.put("code", 400);
+            result.put("message", "重置失败");
+        }
+        return result;
     }
 }

@@ -73,13 +73,12 @@ public class AdaptiveCollectionUtil {
     
     /**
      * 根据数据变化率调整采集间隔
-     * 
-     * @param dataPoint      数据点对象
-     * @param currentValue   当前采集值
-     * @param changeRate     计算得到的变化率
-     * @return 调整后的采集间隔（毫秒）
+     *
+     * @param dataPoint    数据点对象
+     * @param currentValue 当前采集值
+     * @param changeRate   计算得到的变化率
      */
-    public static long adjustCollectionInterval(DataPoint dataPoint, Object currentValue, double changeRate) {
+    public static void adjustCollectionInterval(DataPoint dataPoint, Object currentValue, double changeRate) {
         if (dataPoint == null) {
             throw new IllegalArgumentException("数据点不能为空");
         }
@@ -91,7 +90,7 @@ public class AdaptiveCollectionUtil {
         long baseInterval = dataPoint.getBaseCollectionInterval();
         long minInterval = dataPoint.getMinCollectionInterval();
         long maxInterval = dataPoint.getMaxCollectionInterval();
-        double changeThreshold = dataPoint.getChangeThreshold();
+        double changeThreshold = dataPoint.getPointChangeThreshold();
         
         // 获取数据点稳定计数
         int stableCount = dataPoint.getStableCount();
@@ -134,39 +133,33 @@ public class AdaptiveCollectionUtil {
         dataPoint.setChangeRate(changeRate);
         dataPoint.setStableCount(stableCount);
         dataPoint.setCurrentCollectionInterval(newInterval);
-        
-        return newInterval;
+
     }
     
     /**
      * 初始化数据点的自适应采集配置
      * 
      * @param dataPoint         数据点对象
-     * @param baseInterval      基础采集间隔（毫秒）
-     * @param customMinInterval 自定义最小采集间隔（可选）
-     * @param customMaxInterval 自定义最大采集间隔（可选）
-     * @param customThreshold   自定义变化率阈值（可选）
      */
-    public static void initDataPointAdaptiveConfig(DataPoint dataPoint, long baseInterval,
-                                                  Long customMinInterval, Long customMaxInterval, Double customThreshold) {
+    public static void initDataPointAdaptiveConfig(DataPoint dataPoint) {
         if (dataPoint == null) {
             throw new IllegalArgumentException("数据点不能为空");
         }
         
         // 设置基础采集间隔
-        dataPoint.setBaseCollectionInterval(baseInterval);
+        dataPoint.setBaseCollectionInterval(dataPoint.getBaseCollectionInterval());
         
         // 设置当前采集间隔（初始等于基础间隔）
-        dataPoint.setCurrentCollectionInterval(baseInterval);
+        dataPoint.setCurrentCollectionInterval(dataPoint.getBaseCollectionInterval());
         
         // 设置最小采集间隔
-        dataPoint.setMinCollectionInterval(customMinInterval != null ? customMinInterval : DEFAULT_MIN_COLLECTION_INTERVAL);
+        dataPoint.setMinCollectionInterval(dataPoint.getMinCollectionInterval() != null ? dataPoint.getMinCollectionInterval() : DEFAULT_MIN_COLLECTION_INTERVAL);
         
         // 设置最大采集间隔
-        dataPoint.setMaxCollectionInterval(customMaxInterval != null ? customMaxInterval : DEFAULT_MAX_COLLECTION_INTERVAL);
+        dataPoint.setMaxCollectionInterval(dataPoint.getMaxCollectionInterval() != null ? dataPoint.getMaxCollectionInterval() : DEFAULT_MAX_COLLECTION_INTERVAL);
         
         // 设置变化率阈值
-        dataPoint.setChangeThreshold(customThreshold != null ? customThreshold : DEFAULT_CHANGE_THRESHOLD);
+        dataPoint.setPointChangeThreshold(dataPoint.getPointChangeThreshold() != null ? dataPoint.getPointChangeThreshold() : DEFAULT_CHANGE_THRESHOLD);
         
         // 初始化稳定计数
         dataPoint.setStableCount(0);
@@ -175,7 +168,7 @@ public class AdaptiveCollectionUtil {
         dataPoint.setChangeRate(0.0);
         
         log.debug("数据点 {} 自适应采集配置初始化完成，基础间隔 {}ms，最小 {}ms，最大 {}ms，变化阈值 {}%",
-                dataPoint.getPointId(), baseInterval, dataPoint.getMinCollectionInterval(),
+                dataPoint.getPointId(), dataPoint.getBaseCollectionInterval(), dataPoint.getMinCollectionInterval(),
                 dataPoint.getMaxCollectionInterval(), dataPoint.getChangeThreshold());
     }
     
@@ -208,5 +201,30 @@ public class AdaptiveCollectionUtil {
         
         log.debug("数据点 {} 自适应配置已重置，采集间隔恢复为基础值 {}ms",
                 dataPoint.getPointId(), baseInterval);
+    }
+
+    /**
+     * 调整采集频率
+     *
+     * @param deviceId 设备ID
+     * @param dataPoint 数据点
+     * @param currentValue 当前采集值
+     */
+    static void adjustCollectionFrequency(String deviceId, DataPoint dataPoint, Object currentValue, long adaptiveAdjustWindow) {
+        try {
+            // 检查是否需要调整（避免过于频繁调整）
+            if (AdaptiveCollectionUtil.needAdjust(dataPoint.getLastAdjustTime(), adaptiveAdjustWindow)) {
+                // 计算变化率
+                double changeRate = AdaptiveCollectionUtil.calculateChangeRate(currentValue, dataPoint.getLastValue());
+
+                // 调整采集间隔
+                AdaptiveCollectionUtil.adjustCollectionInterval(dataPoint, currentValue, changeRate);
+
+                // 更新上次调整时间
+                dataPoint.setLastAdjustTime(System.currentTimeMillis());
+            }
+        } catch (Exception e) {
+            log.error("调整设备 {} 数据点 {} 采集频率失败", deviceId, dataPoint.getPointId(), e);
+        }
     }
 }

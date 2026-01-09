@@ -203,7 +203,7 @@ public class DataPoint {
     /**
      * 基础采集间隔（毫秒）
      */
-    private long baseCollectionInterval;
+    private Long baseCollectionInterval;
     
     /**
      * 当前采集间隔（毫秒）
@@ -213,17 +213,17 @@ public class DataPoint {
     /**
      * 最小采集间隔（毫秒）
      */
-    private long minCollectionInterval;
+    private Long minCollectionInterval;
     
     /**
      * 最大采集间隔（毫秒）
      */
-    private long maxCollectionInterval;
+    private Long maxCollectionInterval;
     
     /**
      * 变化率阈值（百分比）
      */
-    private double changeThreshold;
+    private Double pointChangeThreshold;
     
     /**
      * 连续稳定次数

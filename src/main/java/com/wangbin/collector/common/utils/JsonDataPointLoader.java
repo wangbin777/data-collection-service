@@ -173,6 +173,12 @@ public class JsonDataPointLoader {
                 if (map.containsKey("alarmEnabled")) point.setAlarmEnabled(toInteger(map.get("alarmEnabled")));
                 //if (map.containsKey("stringLength")) point.setStringLength(toInteger(map.get("stringLength")));
 
+
+                if (map.containsKey("baseCollectionInterval")) point.setBaseCollectionInterval(toLong(map.get("baseCollectionInterval")));
+                if (map.containsKey("minCollectionInterval")) point.setMinCollectionInterval(toLong(map.get("minCollectionInterval")));
+                if (map.containsKey("maxCollectionInterval")) point.setMaxCollectionInterval(toLong(map.get("maxCollectionInterval")));
+                if (map.containsKey("pointChangeThreshold")) point.setPointChangeThreshold(toDouble(map.get("pointChangeThreshold")));
+
                 // 设置复杂属性
                 if (map.containsKey("alarmRule")) point.setAlarmRule(objectMapper.readValue(
                         (String) map.get("alarmRule"),

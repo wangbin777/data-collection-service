@@ -3,6 +3,7 @@ package com.wangbin.collector.core.config.manager;
 import com.wangbin.collector.common.domain.entity.ConnectionInfo;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
+import com.wangbin.collector.core.collector.scheduler.AdaptiveCollectionUtil;
 import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
 import com.wangbin.collector.core.report.validator.FieldUniquenessValidator;
 import jakarta.annotation.PostConstruct;
@@ -10,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -159,10 +161,24 @@ public class ConfigManager {
         lock.readLock().lock();
         try {
             List<DataPoint> points = pointCache.get(deviceId);
-            return points != null ? new ArrayList<>(points) : Collections.emptyList();
+            return points != null ? points : Collections.emptyList();
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    /**
+     * 获取点位信息并重置数据自适应时间
+     * @param deviceId
+     * @return
+     */
+    public List<DataPoint> getDataPointsAndAdaptiveConfig(String deviceId) {
+        List<DataPoint> dataPoints = getDataPoints(deviceId);
+        if(CollectionUtils.isEmpty(dataPoints)){
+            return Collections.emptyList();
+        }
+        dataPoints.forEach(AdaptiveCollectionUtil::resetAdaptiveConfig);
+        return dataPoints;
     }
 
     /**
