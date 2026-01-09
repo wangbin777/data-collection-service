@@ -60,7 +60,8 @@ public class ProtocolConstant {
     public static final String MQTT_PARAM_WILL_RETAINED = "willRetained";
     public static final String MQTT_PARAM_PUBLISH_TOPIC = "publishTopic";
     public static final String MQTT_PARAM_SUBSCRIBE_TOPICS = "subscribeTopics";
-    public static final String MQTT_PARAM_ACK_TOPIC_TEMPLATE = "ackTopicTemplate";
+    public static final String MQTT_PARAM_ACK_TOPIC_PREFIX = "ackTopicPrefix";
+    public static final String MQTT_PARAM_ACK_TOPIC_SUFFIX = "ackTopicSuffix";
     public static final String MQTT_PARAM_ACK_TIMEOUT = "ackTimeoutMs";
     public static final int DEFAULT_MQTT_ACK_TIMEOUT_MS = 5000;
 

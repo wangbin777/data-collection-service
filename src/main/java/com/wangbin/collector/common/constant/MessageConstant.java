@@ -1,5 +1,8 @@
 package com.wangbin.collector.common.constant;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 public class MessageConstant {
 
     // 消息类型
@@ -33,4 +36,34 @@ public class MessageConstant {
     public static final int DEFAULT_BATCH_SIZE = 50;
     public static final long DEFAULT_FLUSH_INTERVAL = 1000L;
     public static final int MAX_QUEUE_SIZE = 10000;
+
+    private static final List<String> ACK_METHODS = List.of(
+            MESSAGE_TYPE_STATE_UPDATE,
+            MESSAGE_TYPE_PROPERTY_POST,
+            MESSAGE_TYPE_PROPERTY_SET,
+            MESSAGE_TYPE_EVENT_POST,
+            MESSAGE_TYPE_SERVICE_INVOKE,
+            MESSAGE_TYPE_CONFIG_PUSH,
+            MESSAGE_TYPE_OTA_UPGRADE,
+            MESSAGE_TYPE_OTA_PROGRESS
+    );
+
+    /**
+     * 获取需要监听 ACK 的 method 列表
+     */
+    public static List<String> getAckMethods() {
+        return ACK_METHODS;
+    }
+
+    /**
+     * 将 method（以 . 分隔）转换成 MQTT topic 路径
+     */
+    public static String methodToTopicPath(String method) {
+        if (method == null || method.isEmpty()) {
+            return "";
+        }
+        return method.chars()
+                .mapToObj(ch -> ch == '.' ? "/" : String.valueOf((char) ch))
+                .collect(Collectors.joining());
+    }
 }

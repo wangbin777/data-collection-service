@@ -9,6 +9,8 @@ import com.wangbin.collector.core.report.model.ReportConfig;
 import com.wangbin.collector.core.report.model.ReportData;
 import com.wangbin.collector.core.report.model.ReportResult;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.eclipse.paho.mqttv5.client.*;
@@ -390,17 +392,20 @@ public class MqttReportHandler extends AbstractReportHandler {
             }
             connConfig.setSubscribeTopics(subscribeTopicList);
 
-            connConfig.setDefaultProductKey(config.getStringParam("defaultProductKey"));
-            connConfig.setAckTopicTemplate(config.getStringParam(
-                    ProtocolConstant.MQTT_PARAM_ACK_TOPIC_TEMPLATE));
+            connConfig.setGatewayProductKey(config.getStringParam("gatewayProductKey"));
+            connConfig.setGatewayDeviceName(config.getStringParam("gatewayDeviceName"));
+            String ackPrefix = config.getStringParam(ProtocolConstant.MQTT_PARAM_ACK_TOPIC_PREFIX);
+            String ackSuffix = config.getStringParam(ProtocolConstant.MQTT_PARAM_ACK_TOPIC_SUFFIX);
+            connConfig.setAckTopicPrefix(ackPrefix);
+            connConfig.setAckTopicSuffix(ackSuffix);
             connConfig.setAckTimeoutMs(config.getIntParam(
                     ProtocolConstant.MQTT_PARAM_ACK_TIMEOUT,
                     ProtocolConstant.DEFAULT_MQTT_ACK_TIMEOUT_MS));
             connConfig.prepareAckSettings();
-            if (connConfig.getAckSubscriptionTopic() != null
-                    && !connConfig.getAckSubscriptionTopic().isEmpty()
-                    && !subscribeTopicList.contains(connConfig.getAckSubscriptionTopic())) {
-                subscribeTopicList.add(connConfig.getAckSubscriptionTopic());
+            for (String ackTopic : connConfig.getAckSubscriptionTopics()) {
+                if (!subscribeTopicList.contains(ackTopic)) {
+                    subscribeTopicList.add(ackTopic);
+                }
             }
 
             return connConfig;
@@ -438,7 +443,13 @@ public class MqttReportHandler extends AbstractReportHandler {
     }
 
     private String replaceTopicVariables(String topic, ReportData data, ReportConfig config) {
-        String deviceName = Optional.ofNullable(data.getDeviceId()).orElse(config.getTargetId());
+        String fallbackDeviceName = config.getStringParam("gatewayDeviceName");
+        if (fallbackDeviceName == null || fallbackDeviceName.isEmpty()) {
+            fallbackDeviceName = config.getTargetId();
+        }
+        String deviceName = Optional.ofNullable(data.getDeviceId())
+                .filter(name -> !name.isEmpty())
+                .orElse(fallbackDeviceName);
         String methodPath = Optional.ofNullable(data.getMethod())
                 .map(m -> m.replace('.', '/'))
                 .orElse("");
@@ -447,11 +458,9 @@ public class MqttReportHandler extends AbstractReportHandler {
         if (data.getMetadata() != null && data.getMetadata().get("productKey") != null) {
             productKey = String.valueOf(data.getMetadata().get("productKey"));
         }
-        if (productKey.isEmpty()) {
+        if (productKey.isEmpty() && config.getParams() != null) {
             Map<String, Object> params = config.getParams();
-            if (params != null && params.get("defaultProductKey") != null) {
-                productKey = String.valueOf(params.get("defaultProductKey"));
-            }
+            productKey = (String) params.get("gatewayProductKey");
         }
         return topic
                 .replace("{deviceName}", deviceName != null ? deviceName : "")
@@ -505,12 +514,9 @@ public class MqttReportHandler extends AbstractReportHandler {
 
     private byte[] buildJsonPayload(ReportData data, ReportConfig config) {
         Map<String, Object> jsonData = new LinkedHashMap<>();
-        String messageId = data.getBatchId();
-        if (messageId == null) {
-            messageId = UUID.randomUUID().toString();
-        }
+        String messageId = resolveMessageId(data);
         jsonData.put("id", messageId);
-        data.addMetadata("messageId", messageId);
+        data.addMetadata(MessageConstant.FIELD_MESSAGE_ID, messageId);
         jsonData.put("version", MessageConstant.MESSAGE_VERSION_1_0);
         jsonData.put("method", data.getMethod());
         jsonData.put("deviceId", data.getDeviceId());
@@ -648,8 +654,48 @@ public class MqttReportHandler extends AbstractReportHandler {
         if (data == null || data.getMetadata() == null) {
             return null;
         }
-        Object messageId = data.getMetadata().get("messageId");
+        Object messageId = data.getMetadata().get(MessageConstant.FIELD_MESSAGE_ID);
         return messageId != null ? messageId.toString() : null;
+    }
+
+    private String resolveMessageId(ReportData data) {
+        if (data == null) {
+            return UUID.randomUUID().toString();
+        }
+        Map<String, Object> metadata = data.getMetadata();
+        if (metadata != null) {
+            Object existing = metadata.get(MessageConstant.FIELD_MESSAGE_ID);
+            if (existing != null) {
+                String existingId = existing.toString();
+                if (!existingId.isBlank()) {
+                    return existingId;
+                }
+            }
+        }
+
+        String batchId = data.getBatchId();
+        if (batchId != null && !batchId.isBlank()) {
+            String suffix = null;
+            if (metadata != null) {
+                Object chunkIndex = metadata.get("chunkIndex");
+                if (chunkIndex != null) {
+                    String chunkStr = chunkIndex.toString();
+                    if (!chunkStr.isBlank()) {
+                        suffix = chunkStr;
+                    }
+                }
+            }
+            if (suffix == null || suffix.isEmpty()) {
+                if (data.getPointCode() != null && !data.getPointCode().isEmpty()) {
+                    suffix = data.getPointCode();
+                } else {
+                    suffix = Long.toString(System.currentTimeMillis());
+                }
+            }
+            return batchId + "-" + suffix;
+        }
+
+        return UUID.randomUUID().toString();
     }
 
     private void applyAckResult(MqttConnectionConfig connConfig,
@@ -833,11 +879,16 @@ public class MqttReportHandler extends AbstractReportHandler {
         private MqttWillMessage willMessage;
         private String defaultPublishTopic;
         private List<String> subscribeTopics = new ArrayList<>();
-        private String ackTopicTemplate;
-        private String ackSubscriptionTopic;
-        private Pattern ackTopicPattern;
+        @Setter
+        private String ackTopicPrefix;
+        @Setter
+        private String ackTopicSuffix;
+        @Getter
+        private List<String> ackSubscriptionTopics = Collections.emptyList();
+        private List<Pattern> ackTopicPatterns = Collections.emptyList();
         private long ackTimeoutMs = ProtocolConstant.DEFAULT_MQTT_ACK_TIMEOUT_MS;
-        private String defaultProductKey;
+        private String gatewayProductKey;
+        private String gatewayDeviceName;
 
         public MqttConnectionConfig(ReportConfig config) {
             this.targetId = config.getTargetId();
@@ -855,50 +906,71 @@ public class MqttReportHandler extends AbstractReportHandler {
         }
 
         public void prepareAckSettings() {
-            if (ackTopicTemplate == null || ackTopicTemplate.isEmpty()) {
-                ackSubscriptionTopic = null;
-                ackTopicPattern = null;
+            if (ackTopicSuffix == null || ackTopicSuffix.isEmpty()) {
+                ackSubscriptionTopics = Collections.emptyList();
+                ackTopicPatterns = Collections.emptyList();
                 return;
             }
-            ackSubscriptionTopic = buildAckSubscription(ackTopicTemplate);
-            ackTopicPattern = Pattern.compile(buildAckRegex(ackTopicTemplate));
+
+            String normalizedSuffix = ackTopicSuffix.trim();
+            String prefix = normalizePrefix(ackTopicPrefix);
+            List<String> topics = new ArrayList<>();
+            List<Pattern> patterns = new ArrayList<>();
+
+            for (String method : MessageConstant.getAckMethods()) {
+                String methodPath = MessageConstant.methodToTopicPath(method);
+                if (methodPath.isEmpty()) {
+                    continue;
+                }
+                String topic = prefix + "/" + gatewayProductKey + "/" + gatewayDeviceName + "/" + methodPath + normalizedSuffix;
+                topics.add(topic);
+                patterns.add(buildAckPattern(topic));
+            }
+
+            ackSubscriptionTopics = Collections.unmodifiableList(topics);
+            ackTopicPatterns = Collections.unmodifiableList(patterns);
         }
 
-        private String buildAckSubscription(String template) {
-            String topic = template;
-            String pk = defaultProductKey != null && !defaultProductKey.isEmpty() ? defaultProductKey : "+";
-            topic = topic.replace("{productKey}", pk);
-            String device = targetId != null && !targetId.isEmpty() ? targetId : "+";
-            topic = topic.replace("{deviceName}", device);
-            return topic;
-        }
-
-        private String buildAckRegex(String template) {
+        private Pattern buildAckPattern(String topic) {
             StringBuilder regex = new StringBuilder();
-            for (int i = 0; i < template.length(); ) {
-                if (template.startsWith("{productKey}", i)) {
+            for (int i = 0; i < topic.length(); i++) {
+                char ch = topic.charAt(i);
+                if (ch == '+') {
                     regex.append("[^/]+");
-                    i += "{productKey}".length();
-                } else if (template.startsWith("{deviceName}", i)) {
-                    regex.append("[^/]+");
-                    i += "{deviceName}".length();
+                } else if ("\\.[]{}()*+-?^$|".indexOf(ch) >= 0) {
+                    regex.append('\\').append(ch);
                 } else {
-                    char ch = template.charAt(i++);
-                    if ("\\.[]{}()*+-?^$|".indexOf(ch) >= 0) {
-                        regex.append('\\');
-                    }
                     regex.append(ch);
                 }
             }
-            return regex.toString();
+            return Pattern.compile(regex.toString());
         }
 
         public boolean shouldWaitForAck() {
-            return ackTopicPattern != null && ackTimeoutMs > 0;
+            return !ackTopicPatterns.isEmpty() && ackTimeoutMs > 0;
         }
 
         public boolean isAckTopic(String topic) {
-            return ackTopicPattern != null && topic != null && ackTopicPattern.matcher(topic).matches();
+            if (ackTopicPatterns.isEmpty() || topic == null) {
+                return false;
+            }
+            for (Pattern pattern : ackTopicPatterns) {
+                if (pattern.matcher(topic).matches()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private String normalizePrefix(String prefix) {
+            String value = prefix == null || prefix.isBlank() ? "/sys" : prefix.trim();
+            if (!value.startsWith("/")) {
+                value = "/" + value;
+            }
+            if (value.endsWith("/") && value.length() > 1) {
+                value = value.substring(0, value.length() - 1);
+            }
+            return value;
         }
     }
 

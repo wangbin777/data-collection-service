@@ -99,7 +99,9 @@ collector:
       password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
       topic-prefix: iot/device
       ack-topic-prefix: /sys
-      ack-topic-suffix: thing/property/post_reply
+      gateway-product-key: byxuTQjqn6TCDwJ0
+      gateway-device-name: collector-1
+      ack-topic-suffix: _reply
       ack-timeout-seconds: 5
       qos: 1
       clean-session: true
@@ -109,6 +111,7 @@ collector:
         property: thing/property/post
         event: thing/event/post
         state: thing/state/update
+
 
   modbus:
     timeout: 3000

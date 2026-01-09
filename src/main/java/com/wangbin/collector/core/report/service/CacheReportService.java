@@ -117,10 +117,10 @@ public class CacheReportService {
 
     private String defaultProductKey() {
         ReportProperties.Mqtt mqtt = reportProperties.getMqtt();
-        if (mqtt == null || mqtt.getProductKey() == null) {
+        if (mqtt == null || mqtt.getGatewayProductKey() == null) {
             return "";
         }
-        return mqtt.getProductKey();
+        return mqtt.getGatewayProductKey();
     }
 
     private void triggerImmediateFlush(String deviceId) {

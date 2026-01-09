@@ -72,12 +72,21 @@ public class ReportConfigProvider {
         params.put(ProtocolConstant.MQTT_PARAM_PUBLISH_TOPIC, mqtt.getDefaultTopicTemplate());
         params.put("qos", mqtt.getQos());
         params.put("retained", mqtt.isRetained());
-        params.put(ProtocolConstant.MQTT_PARAM_ACK_TOPIC_TEMPLATE, mqtt.getAckTopicTemplate());
+        params.put(ProtocolConstant.MQTT_PARAM_ACK_TOPIC_PREFIX, mqtt.getAckTopicPrefix());
+        params.put(ProtocolConstant.MQTT_PARAM_ACK_TOPIC_SUFFIX, mqtt.getAckTopicSuffix());
         params.put(ProtocolConstant.MQTT_PARAM_ACK_TIMEOUT, mqtt.getAckTimeoutMs());
-        String fallbackProductKey = mqtt.getProductKey();
-        if (fallbackProductKey != null && !fallbackProductKey.isEmpty()) {
-            params.put("defaultProductKey", fallbackProductKey);
+
+        String gatewayProductKey = mqtt.getGatewayProductKey();
+        if (gatewayProductKey != null && !gatewayProductKey.isEmpty()) {
+            params.put("gatewayProductKey", gatewayProductKey);
+            params.put("defaultProductKey", gatewayProductKey);
         }
+
+        String gatewayDeviceName = mqtt.getGatewayDeviceName();
+        if (gatewayDeviceName != null && !gatewayDeviceName.isEmpty()) {
+            params.put("gatewayDeviceName", gatewayDeviceName);
+        }
+
         config.setParams(params);
 
         return config;
