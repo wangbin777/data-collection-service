@@ -4,6 +4,7 @@ import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.manager.CollectionManager;
 import com.wangbin.collector.core.collector.statistics.CollectionStatistics;
+import com.wangbin.collector.core.config.CollectorProperties;
 import com.wangbin.collector.core.config.manager.ConfigManager;
 import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
 import jakarta.annotation.PostConstruct;
@@ -39,6 +40,9 @@ public class CollectionScheduler {
     @Autowired
     private CollectionStatistics collectionStatistics;
 
+    @Autowired
+    private CollectorProperties collectorProperties;
+
     // ================== 优化的线程池配置 ==================
 
     // 1. 时间片调度器 - 负责宏观调度
@@ -72,35 +76,6 @@ public class CollectionScheduler {
 
     // 调度锁，防止重复调度
     private final ReentrantLock scheduleLock = new ReentrantLock();
-
-    @Value("${collector.scheduler.initial-time-slice-count:2}")
-    private int initialTimeSliceCount;
-
-    @Value("${collector.scheduler.max-time-slice-count:10}")
-    private int maxTimeSliceCount;
-
-    @Value("${collector.scheduler.min-time-slice-interval-ms:50}")
-    private int minTimeSliceInterval;
-
-    @Value("${collector.scheduler.default-time-slice-interval-ms:1000}")
-    private int defaultTimeSliceInterval;
-
-    @Value("${collector.scheduler.initial-time-slice-interval-ms:1000}")
-    private int initialTimeSliceInterval;
-
-    @Value("${collector.scheduler.dynamic-adjust-interval-ms:30000}")
-    private int dynamicAdjustInterval;
-
-    @Value("${collector.scheduler.collect-timeout-ms:500}")
-    private long collectTimeoutMs;
-    
-    // 自适应采集配置
-    @Value("${collector.adaptive-collection.enabled:true}")
-    private boolean adaptiveCollectionEnabled;
-    
-    @Value("${collector.adaptive-collection.adjust-window-ms:60000}")
-    private long adaptiveAdjustWindow;
-    
     // 时间片配置
     private AtomicInteger TIME_SLICE_COUNT = new AtomicInteger(2);          // 动态时间片数量
     private AtomicInteger TIME_SLICE_INTERVAL = new AtomicInteger(1000);    // 动态时间片间隔（ms）
@@ -122,15 +97,38 @@ public class CollectionScheduler {
     public void init() {
         // 获取服务器CPU核心数
         int cpuCores = Runtime.getRuntime().availableProcessors();
-        int normalizedSliceCount = Math.max(1, Math.min(initialTimeSliceCount, maxTimeSliceCount));
-        TIME_SLICE_COUNT.set(normalizedSliceCount);
-        int normalizedInterval = Math.max(minTimeSliceInterval, initialTimeSliceInterval);
-        TIME_SLICE_INTERVAL.set(normalizedInterval);
-        int maxInterval = Math.max(defaultTimeSliceInterval * 2, normalizedInterval);
-        this.timeSliceTuner = new TimeSliceTuner(minTimeSliceInterval, maxInterval, normalizedInterval);
+        // 1. 计算并设置标准化的时间片数量
+        // 取初始时间片数量和最大时间片数量的较小值，再与1取较大值（确保至少1个时间片）
+        int normalizedSliceCount = Math.max(1, Math.min(
+                collectorProperties.getScheduler().getInitialTimeSliceCount(), // 初始值：4
+                collectorProperties.getScheduler().getMaxTimeSliceCount()      // 最大值：12
+        ));
+        TIME_SLICE_COUNT.set(normalizedSliceCount); // 结果：4（4和12取小得4，再和1取大得4）
 
-        // 线程池由 ThreadPoolConfig 统一注入，确保与调度器配置一至
+        // 2. 计算并设置标准化的时间片间隔
+        // 取最小时间片间隔和初始时间片间隔的较大值
+        int normalizedInterval = Math.max(
+                collectorProperties.getScheduler().getMinTimeSliceIntervalMs(),    // 最小值：300ms
+                collectorProperties.getScheduler().getInitialTimeSliceIntervalMs() // 初始值：1500ms
+        );
+        TIME_SLICE_INTERVAL.set(normalizedInterval); // 结果：1500ms（300和1500取大得1500）
 
+        // 3. 计算最大间隔并创建时间片调节器
+        // 最大间隔 = 默认时间片间隔×2 与 标准化间隔 取较大值
+        int maxInterval = Math.max(
+                collectorProperties.getScheduler().getDefaultTimeSliceIntervalMs() * 2, // 默认值1500×2=3000ms
+                normalizedInterval                                                      // 标准化间隔：1500ms
+        ); // 结果：3000ms（3000和1500取大得3000）
+
+        // 4. 创建时间片调节器实例
+        // 参数：最小间隔(300ms)，最大间隔(3000ms)，初始间隔(1500ms)
+        this.timeSliceTuner = new TimeSliceTuner(
+                collectorProperties.getScheduler().getMinTimeSliceIntervalMs(), // 300ms
+                maxInterval,                                                    // 3000ms
+                normalizedInterval                                              // 1500ms
+        );
+
+        // 线程池由 ThreadPoolConfig 统一注入，确保与调度器配置一至
         // 初始化时间片任务表
         for (int i = 0; i < TIME_SLICE_COUNT.get(); i++) {
             timeSliceTasks.put(i, new CopyOnWriteArrayList<>());
@@ -281,7 +279,7 @@ public class CollectionScheduler {
 
             // 超时控制
             Map<String, Object> values = collectFuture
-                    .completeOnTimeout(Collections.emptyMap(), collectTimeoutMs, TimeUnit.MILLISECONDS)
+                    .completeOnTimeout(Collections.emptyMap(), collectorProperties.getScheduler().getCollectTimeoutMs(), TimeUnit.MILLISECONDS)
                     .join();
 
             if (!values.isEmpty()) {
@@ -361,7 +359,7 @@ public class CollectionScheduler {
             }
             
             // 4. 初始化数据点的自适应采集配置
-            if (adaptiveCollectionEnabled) {
+            if (collectorProperties.getAdaptiveCollection().isEnabled()) {
                 for (DataPoint dataPoint : dataPoints) {
                     AdaptiveCollectionUtil.initDataPointAdaptiveConfig(dataPoint);
                 }
@@ -854,8 +852,8 @@ public class CollectionScheduler {
                 }
 
                 // 自适应采集频率调整
-                if (adaptiveCollectionEnabled) {
-                    AdaptiveCollectionUtil.adjustCollectionFrequency(deviceId, point, value,adaptiveAdjustWindow);
+                if (collectorProperties.getAdaptiveCollection().isEnabled()) {
+                    AdaptiveCollectionUtil.adjustCollectionFrequency(deviceId, point, value, collectorProperties.getAdaptiveCollection().getAdjustWindowMs());
                 }
             }
         }
@@ -888,6 +886,7 @@ public class CollectionScheduler {
      * 启动动态时间片调整任务
      */
     private void startDynamicTimeSliceAdjustment() {
+        int dynamicAdjustInterval = collectorProperties.getScheduler().getDynamicAdjustIntervalMs();
         timeSliceScheduler.scheduleAtFixedRate(this::adjustTimeSlicesDynamically, dynamicAdjustInterval, dynamicAdjustInterval, TimeUnit.MILLISECONDS);
         log.info("动态时间片调整已启动，调整间隔: {}ms", dynamicAdjustInterval);
     }
@@ -934,12 +933,12 @@ public class CollectionScheduler {
      */
     private int calculateOptimalSliceCount(int activeDevices, long totalTasks, double cpuLoad) {
         // 基础片数：根据设备数和任务数计算
-        int baseSlices = Math.max(1, Math.min(activeDevices / 5 + 1, maxTimeSliceCount));
+        int baseSlices = Math.max(1, Math.min(activeDevices / 5 + 1, collectorProperties.getScheduler().getMaxTimeSliceCount()));
         
         // 根据CPU负载调整
         if (cpuLoad > 0.8) {
             // 高负载时增加片数，降低每片任务数
-            baseSlices = Math.min(maxTimeSliceCount, baseSlices + 2);
+            baseSlices = Math.min(collectorProperties.getScheduler().getMaxTimeSliceCount(), baseSlices + 2);
         } else if (cpuLoad < 0.3) {
             // 低负载时减少片数，增加每片任务数
             baseSlices = Math.max(2, baseSlices - 1);

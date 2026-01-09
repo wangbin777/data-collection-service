@@ -53,6 +53,16 @@ public class CollectorProperties {
      * 通用配置
      */
     private CommonConfig common = new CommonConfig();
+    
+    /**
+     * 调度器配置
+     */
+    private SchedulerConfig scheduler = new SchedulerConfig();
+    
+    /**
+     * 自适应采集配置
+     */
+    private AdaptiveCollectionConfig adaptiveCollection = new AdaptiveCollectionConfig();
 
     // =============== 配置类定义 ===============
 
@@ -137,5 +147,28 @@ public class CollectorProperties {
         private int dataCacheSize = 10000;
         private boolean enableMonitor = true;
         private boolean enableAlert = true;
+    }
+    
+    /**
+     * 调度器配置类
+     */
+    @Data
+    public static class SchedulerConfig {
+        private int initialTimeSliceCount = 2;
+        private int maxTimeSliceCount = 10;
+        private int minTimeSliceIntervalMs = 50;
+        private int defaultTimeSliceIntervalMs = 1000;
+        private int initialTimeSliceIntervalMs = 1000;
+        private int dynamicAdjustIntervalMs = 30000;
+        private long collectTimeoutMs = 500;
+    }
+    
+    /**
+     * 自适应采集配置类
+     */
+    @Data
+    public static class AdaptiveCollectionConfig {
+        private boolean enabled = true;
+        private long adjustWindowMs = 60000;
     }
 }
