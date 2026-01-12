@@ -93,7 +93,7 @@ collector:
     flush-interval: 1000
     mqtt:
       enabled: true
-      broker-url: tcp://localhost:1883
+      broker-url: tcp://43.138.73.155:1883
       client-id: byxuTQjqn6TCDwJ0.collector-1
       username: collector-1&byxuTQjqn6TCDwJ0
       password: 99689a00383882f4566ab8dc5e49dc895d6c5afb56055c860e6774aa2e14bab8
