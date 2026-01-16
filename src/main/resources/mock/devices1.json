@@ -3,8 +3,6 @@
   "deviceId": "PLC001",
   "deviceName": "西门子S7-1200 PLC",
   "deviceAlias": "主控PLC",
-  "productKey": "PLC-S7-1200",
-  "productName": "西门子PLC",
   "groupId": "plc_group",
   "groupName": "PLC设备组",
   "protocolType": "MODBUS_TCP",
@@ -20,18 +18,8 @@
     "stopBits": 1,
     "parity": "none"
   },
-  "connectionConfig": {
-    "keepAlive": true,
-    "reconnectInterval": 5000,
-    "connectTimeout": 3000,
-    "socketTimeout": 5000
-  },
   "collectionInterval": 1,
   "reportInterval": 5,
-  "status": "ONLINE",
-  "lastOnlineTime": "2024-01-15T08:30:00Z",
-  "maxRetryCount": 5,
-  "retryCount": 0,
   "createTime": "2024-01-01T00:00:00Z",
   "updateTime": "2024-01-15T08:30:00Z",
   "remark": "主控PLC设备，负责生产线控制"
@@ -41,8 +29,6 @@
     "deviceId": "PLC002",
     "deviceName": "西门子S7-1200 PLC",
     "deviceAlias": "主控PLC",
-    "productKey": "PLC-S7-1200-RTU",
-    "productName": "西门子PLC-RTU",
     "groupId": "plc_group",
     "groupName": "PLC设备组",
     "protocolType": "MODBUS_RTU",
@@ -68,34 +54,12 @@
       "echo": false,
       "localMode": false
     },
-    "connectionConfig": {
-      "keepAlive": true,
-      "reconnectInterval": 5000,
-      "connectTimeout": 3000,
-      "socketTimeout": null,
-      "autoReconnect": true,
-      "clearBuffersOnConnect": true,
-      "discardNullBytes": false,
-      "failureThreshold": 3
-    },
     "collectionInterval": 1,
     "reportInterval": 5,
     "status": "ONLINE",
     "lastOnlineTime": "2024-01-15T08:30:00Z",
     "maxRetryCount": 5,
     "retryCount": 0,
-    "hardwareConfig": {
-      "interfaceType": "RS485",
-      "terminationResistor": false,
-      "polarityInverted": false,
-      "baudRateList": [
-        9600,
-        19200,
-        38400,
-        57600,
-        115200
-      ]
-    },
     "createTime": "2024-01-01T00:00:00Z",
     "updateTime": "2024-01-15T08:30:00Z",
     "remark": "主控PLC设备，通过RS485 Modbus RTU协议通信"
@@ -104,8 +68,6 @@
   "deviceId": "RTU_104_001",
   "deviceName": "IEC 104规约终端单元",
   "deviceAlias": "104规约站",
-  "productKey": "IEC_60870_5_104",
-  "productName": "IEC 60870-5-104 RTU",
   "groupId": "rtu_group",
   "groupName": "RTU设备组",
   "protocolType": "IEC104",
@@ -125,12 +87,6 @@
     "t3": 20,
     "k": 12,
     "w": 8
-  },
-  "connectionConfig": {
-    "keepAlive": true,
-    "reconnectInterval": 10000,
-    "connectTimeout": 5000,
-    "socketTimeout": 10000
   },
   "collectionInterval": 2,
   "reportInterval": 10,
