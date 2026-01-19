@@ -2,6 +2,7 @@ package com.wangbin.collector.core.config.manager;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wangbin.collector.common.domain.entity.ApiResponse;
 import com.wangbin.collector.common.domain.entity.ConnectionInfo;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
@@ -38,6 +39,9 @@ public class ConfigSyncService {
      */
     @Value("${collector.config.yun-url:http://localhost:8080}")
     private String runUrl;
+
+    @Value("${collector.config.tenant-id:1}")
+    private String tenantId;
 
     /**
      * 配置同步间隔（毫秒）
@@ -182,13 +186,14 @@ public class ConfigSyncService {
      */
     public List<DeviceInfo> loadAllDevices() {
         try {
-            String url = runUrl + "/iot/collector/config/devices?serviceId=" + serviceId;
+            String url = runUrl + "/admin-api/iot/collector/config/devices?serviceId=" + serviceId;
 
-            ResponseEntity<DeviceInfo[]> response = restTemplate.exchange(
-                    url, HttpMethod.GET, createAuthRequest(), DeviceInfo[].class);
+            ResponseEntity<ApiResponse<List<DeviceInfo>>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, createAuthRequest(), new ParameterizedTypeReference<>() {
+                    });
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                List<DeviceInfo> devices = Arrays.asList(response.getBody());
+                List<DeviceInfo> devices = response.getBody().getData();
 
                 // 更新本地缓存
                 for (DeviceInfo device : devices) {
@@ -204,7 +209,7 @@ public class ConfigSyncService {
             log.error("加载设备配置失败", e);
         }
 
-        return loadMockDevicesFromFile();
+        return Collections.emptyList();
     }
 
     /**
@@ -244,7 +249,7 @@ public class ConfigSyncService {
      */
     public DeviceInfo loadDevice(String deviceId) {
         try {
-            String url = runUrl + "/iot/collector/config/device/" + deviceId;
+            String url = runUrl + "/admin-api/iot/collector/config/device/" + deviceId;
 
             ResponseEntity<DeviceInfo> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(), DeviceInfo.class);
@@ -411,6 +416,7 @@ public class ConfigSyncService {
     private HttpEntity<String> createAuthRequest() {
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-API-Token", getApiToken());
+        headers.set("tenant-id", tenantId);
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         return new HttpEntity<>(headers);

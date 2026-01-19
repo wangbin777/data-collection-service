@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.collector.protocol.snmp.base;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.snmp.domain.SnmpAddress;
@@ -8,7 +9,6 @@ import com.wangbin.collector.core.collector.protocol.snmp.util.SnmpUtils;
 import com.wangbin.collector.core.config.CollectorProperties;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import com.wangbin.collector.core.connection.adapter.SnmpConnectionAdapter;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.snmp4j.PDU;
 import org.snmp4j.Snmp;
@@ -22,7 +22,6 @@ import org.snmp4j.smi.Variable;
 import org.snmp4j.smi.VariableBinding;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,7 +35,6 @@ import java.util.Objects;
 public abstract class AbstractSnmpCollector extends BaseCollector {
 
     protected SnmpConnectionAdapter snmpConnection;
-    protected ConnectionConfig managedConnectionConfig;
 
     protected CollectorProperties.SnmpConfig snmpConfig;
 
@@ -53,30 +51,28 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
                 ? collectorProperties.getSnmp()
                 : new CollectorProperties.SnmpConfig();
 
-        Map<String, Object> config = deviceInfo.getProtocolConfig() != null
-                ? deviceInfo.getProtocolConfig()
-                : Collections.emptyMap();
+        DeviceConnection connection = ensureConnectionConfig();
 
-        host = deviceInfo.getIpAddress();
-        if (host == null || host.isBlank()) {
-            host = Objects.toString(config.getOrDefault("ipAddress", "127.0.0.1"));
-        }
+        host = connection.getHost();
+        connection.setHost(host);
 
-        port = parseInt(config.get("port"),
-                deviceInfo.getPort() != null ? deviceInfo.getPort() : port);
-        community = Objects.toString(
-                config.getOrDefault("community", snmpConfig != null
-                        ? snmpConfig.getCommunity()
-                        : community));
-        timeout = parseInt(config.get("timeout"),
-                snmpConfig != null ? snmpConfig.getTimeout() : timeout);
-        retries = parseInt(config.get("retries"),
-                snmpConfig != null ? snmpConfig.getRetries() : retries);
+        port = connection.getPort();
+        connection.setPort(port);
 
-        versionText = Objects.toString(
-                config.getOrDefault("version",
-                        snmpConfig != null ? snmpConfig.getVersion() : "2c"),
-                "2c").trim();
+        community = connection.getStringConfig("community",
+                snmpConfig != null ? snmpConfig.getCommunity() : community);
+        timeout = connection.getReadTimeout();
+        connection.setReadTimeout(timeout);
+        connection.setWriteTimeout(connection.getWriteTimeout());
+
+        retries = connection.getIntConfig("snmpRetries",
+                snmpConfig != null ? snmpConfig.getRetries() : this.retries);
+        versionText = connection.getStringConfig("snmpVersion",
+                snmpConfig != null ? snmpConfig.getVersion() : "2c").trim();
+
+        /*props.put("community", community);
+        props.put("snmpVersion", versionText);
+        props.put("snmpRetries", retries);*/
 
         switch (versionText) {
             case "1":
@@ -94,8 +90,7 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
     }
 
     protected void initSnmpConnection() throws Exception {
-        this.managedConnectionConfig = buildConnectionConfig();
-        ConnectionAdapter adapter = connectionManager.createConnection(managedConnectionConfig);
+        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo);
         connectionManager.connect(deviceInfo.getDeviceId());
         if (!(adapter instanceof SnmpConnectionAdapter snmpAdapter)) {
             throw new IllegalStateException("SNMP连接适配器类型不匹配");
@@ -108,49 +103,8 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
             connectionManager.removeConnection(deviceInfo.getDeviceId());
         }
         snmpConnection = null;
-        managedConnectionConfig = null;
     }
 
-    protected ConnectionConfig buildConnectionConfig() {
-        ConnectionConfig config = new ConnectionConfig();
-        config.setDeviceId(deviceInfo.getDeviceId());
-        config.setDeviceName(deviceInfo.getDeviceName());
-        config.setProtocolType(getProtocolType());
-        config.setConnectionType("SNMP");
-        config.setHost(host);
-        config.setPort(port);
-        config.setReadTimeout(timeout);
-        config.setWriteTimeout(timeout);
-        Map<String, Object> connectionExtras = deviceInfo.getConnectionConfig();
-        config.setConnectTimeout(parseInt(
-                connectionExtras != null ? connectionExtras.get("connectTimeout") : null,
-                5000));
-        config.setGroupId(deviceInfo.getGroupId());
-        config.setMaxPendingMessages(parseInt(
-                connectionExtras != null
-                        ? connectionExtras.get("maxPendingMessages")
-                        : null, 1024));
-        config.setDispatchBatchSize(parseInt(
-                connectionExtras != null
-                        ? connectionExtras.get("dispatchBatchSize")
-                        : null, 1));
-        config.setDispatchFlushInterval(parseLong(
-                connectionExtras != null ? connectionExtras.get("dispatchFlushInterval") : null, 0L));
-        String overflow = connectionExtras != null
-                ? Objects.toString(connectionExtras.get("overflowStrategy"), "BLOCK")
-                : "BLOCK";
-        config.setOverflowStrategy(overflow);
-
-        Map<String, Object> protocol = new HashMap<>();
-        protocol.put("community", community);
-        protocol.put("snmpVersion", versionText);
-        protocol.put("snmpRetries", retries);
-        config.setProtocolConfig(protocol);
-        if (connectionExtras != null) {
-            config.setExtraParams(new HashMap<>(connectionExtras));
-        }
-        return config;
-    }
 
     protected Map<String, Variable> performGet(List<SnmpAddress> addresses) throws IOException {
         try {
@@ -292,17 +246,19 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
         }
     }
 
-    private long parseLong(Object raw, long defaultValue) {
-        if (raw == null) {
-            return defaultValue;
+    private DeviceConnection ensureConnectionConfig() {
+        if (deviceInfo.getConnectionConfig() == null) {
+            deviceInfo.setConnectionConfig(new DeviceConnection());
         }
-        if (raw instanceof Number number) {
-            return number.longValue();
+        return deviceInfo.getConnectionConfig();
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
         }
-        try {
-            return Long.parseLong(raw.toString());
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
+        return null;
     }
 }

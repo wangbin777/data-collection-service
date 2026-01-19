@@ -1,9 +1,9 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
 import com.wangbin.collector.core.connection.dispatch.OverflowStrategy;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
@@ -61,8 +61,8 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
     private String clientId;
     private boolean useMqttV5;
 
-    public MqttConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public MqttConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
         initialize();
     }
 
@@ -95,7 +95,9 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
         if (config.getClientId() != null && !config.getClientId().isEmpty()) {
             return config.getClientId();
         }
-        String prefix = config.getDeviceId() != null ? config.getDeviceId() : "collector";
+        String prefix = deviceInfo != null && deviceInfo.getDeviceId() != null
+                ? deviceInfo.getDeviceId()
+                : "collector";
         return prefix + "_" + UUID.randomUUID().toString().substring(0, 8);
     }
 
@@ -334,7 +336,8 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
             }
         }
         if (subscribed == 0) {
-            String defaultTopic = String.format("devices/%s/#", config.getDeviceId());
+            String defaultTopic = String.format("devices/%s/#",
+                    deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
             subscribeTopic(defaultTopic, 1, true);
         }
     }
@@ -419,7 +422,8 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
         if (topic != null && !topic.isEmpty()) {
             return topic;
         }
-        return String.format("devices/%s/data", config.getDeviceId());
+        return String.format("devices/%s/data",
+                deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
     }
 
     private void publishInternal(String topic, byte[] payload, int qos, boolean retained) throws Exception {
@@ -483,7 +487,8 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
 
     @Override
     protected void doHeartbeat() throws Exception {
-        String pingTopic = String.format("$SYS/%s/ping", config.getDeviceId());
+        String pingTopic = String.format("$SYS/%s/ping",
+                deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
         byte[] payload = "PING".getBytes(StandardCharsets.UTF_8);
         if (useMqttV5) {
             mqttClientV5.publish(pingTopic, payload, 0, false);
@@ -507,12 +512,15 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
         } else {
             mqttClientV3.publish(authTopic, payload, 1, false).waitForCompletion(5000);
         }
-        log.info("MQTT额外认证消息已发送 {}", config.getDeviceId());
+        log.info("MQTT额外认证消息已发送 {}",
+                deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
     }
 
     private String buildAuthMessage() {
         Map<String, Object> authData = new java.util.HashMap<>();
-        authData.put("deviceId", config.getDeviceId());
+        if (deviceInfo != null && deviceInfo.getDeviceId() != null) {
+            authData.put("deviceId", deviceInfo.getDeviceId());
+        }
         authData.put("timestamp", System.currentTimeMillis());
         if (config.getProductKey() != null) {
             authData.put("productKey", config.getProductKey());

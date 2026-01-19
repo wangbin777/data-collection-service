@@ -1,6 +1,7 @@
 package com.wangbin.collector.core.collector.protocol.modbus.base;
 
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.RegisterType;
@@ -100,9 +101,7 @@ public abstract class AbstractModbusCollector extends BaseCollector {
         if (point.getUnitId() != null) {
             return point.getUnitId();
         }
-
-        Object v = deviceInfo.getProtocolConfig().get("slaveId");
-        return v instanceof Integer ? (Integer) v : 1;
+        return deviceInfo.getConnectionConfig().getSlaveId();
     }
 
     /**
@@ -111,10 +110,7 @@ public abstract class AbstractModbusCollector extends BaseCollector {
     protected Map<String, Object> getBaseDeviceStatus(String protocolType) {
         Map<String, Object> status = new HashMap<>();
         status.put("protocol", protocolType);
-        Object configuredSlaveId = null;
-        if (deviceInfo != null && deviceInfo.getProtocolConfig() != null) {
-            configuredSlaveId = deviceInfo.getProtocolConfig().get("slaveId");
-        }
+        Object configuredSlaveId = deviceInfo.getConnectionConfig().getSlaveId();
         status.put("slaveId", configuredSlaveId != null ? String.valueOf(configuredSlaveId) : "1");
         status.put("timeout", timeout);
         status.put("clientConnected", isConnected());
@@ -210,4 +206,11 @@ public abstract class AbstractModbusCollector extends BaseCollector {
      * 检查连接状态
      */
     public abstract boolean isConnected();
+
+    protected DeviceConnection ensureConnectionConfig() {
+        if (deviceInfo.getConnectionConfig() == null) {
+            deviceInfo.setConnectionConfig(new DeviceConnection());
+        }
+        return deviceInfo.getConnectionConfig();
+    }
 }

@@ -1,15 +1,13 @@
 package com.wangbin.collector.core.collector.protocol.opc.ua.base;
 
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.opc.ua.domain.OpcUaAddress;
 import com.wangbin.collector.core.collector.protocol.opc.ua.util.OpcUaAddressParser;
 import com.wangbin.collector.core.config.CollectorProperties;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
-import com.wangbin.collector.core.connection.adapter.OpcUaConnectionAdapter;
-import com.wangbin.collector.core.connection.manager.ConnectionManager;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
 import org.eclipse.milo.opcua.sdk.client.subscriptions.MonitoredItemServiceOperationResult;
@@ -41,8 +39,6 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
     // 使用统一连接管理
     private ConnectionAdapter<OpcUaClient> connectionAdapter;
     protected OpcUaClient client;
-    protected CollectorProperties.OpcUaConfig opcUaConfig;
-
     protected String endpointUrl;
     protected String securityPolicy;
     protected String username;
@@ -56,12 +52,8 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
     protected void doConnect() throws Exception {
         // 初始化配置
         initOpcUaConfig(deviceInfo);
-        
-        // 构建连接配置
-        ConnectionConfig config = buildConnectionConfig();
-        
         // 创建并建立连接
-        connectionAdapter = connectionManager.createConnection(config);
+        connectionAdapter = connectionManager.createConnection(deviceInfo);
         connectionAdapter.connect();
         
         // 获取OPC UA客户端（无需类型转换）
@@ -81,63 +73,14 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
         subscriptions.clear();
     }
 
-    /**
-     * 构建连接配置
-     */
-    private ConnectionConfig buildConnectionConfig() {
-        ConnectionConfig config = new ConnectionConfig();
-        config.setDeviceId(deviceInfo.getDeviceId());
-        config.setDeviceName(deviceInfo.getDeviceName());
-        config.setProtocolType("OPC_UA");
-        config.setConnectionType("OPC_UA");
-        config.setGroupId(deviceInfo.getGroupId());
-        
-        // 设置OPC UA特定配置
-        config.setUrl(endpointUrl);
-        
-        Map<String, Object> protocolConfig = new HashMap<>();
-        protocolConfig.put("endpointUrl", endpointUrl);
-        protocolConfig.put("securityPolicy", securityPolicy);
-        if (username != null && !username.isEmpty()) {
-            protocolConfig.put("username", username);
-            protocolConfig.put("password", password);
-        }
-        protocolConfig.put("requestTimeout", requestTimeout);
-        
-        config.setProtocolConfig(protocolConfig);
-        
-        // 设置连接超时
-        config.setConnectTimeout(requestTimeout);
-        config.setReadTimeout(requestTimeout);
-        config.setWriteTimeout(requestTimeout);
-        
-        return config;
-    }
-
     protected void initOpcUaConfig(DeviceInfo deviceInfo) {
-        this.opcUaConfig = collectorProperties != null
-                ? collectorProperties.getOpcUa()
-                : new CollectorProperties.OpcUaConfig();
-
-        Map<String, Object> protocol = deviceInfo.getProtocolConfig();
-        endpointUrl = protocol != null && protocol.get("endpointUrl") != null
-                ? protocol.get("endpointUrl").toString()
-                : protocol != null && protocol.get("endpoint") != null
-                ? protocol.get("endpoint").toString()
-                : "opc.tcp://127.0.0.1:4840";
-        securityPolicy = protocol != null && protocol.get("securityPolicy") != null
-                ? protocol.get("securityPolicy").toString()
-                : opcUaConfig.getSecurityPolicy();
-        username = protocol != null && protocol.get("username") != null
-                ? protocol.get("username").toString()
-                : null;
-        password = protocol != null && protocol.get("password") != null
-                ? protocol.get("password").toString()
-                : null;
-        requestTimeout = protocol != null && protocol.get("requestTimeout") != null
-                ? Integer.parseInt(protocol.get("requestTimeout").toString())
-                : opcUaConfig.getRequestTimeout();
-        subscriptionInterval = opcUaConfig.getSubscriptionInterval();
+        DeviceConnection connection = ensureConnectionConfig();
+        endpointUrl = connection.getUrl();
+        securityPolicy = connection.getSecurityPolicy();
+        username = connection.getUsername();
+        password = connection.getPassword();
+        requestTimeout = connection.getReadTimeout() != null ? connection.getReadTimeout() : 0;
+        subscriptionInterval = connection.getSubscriptionInterval();
     }
 
     protected Object readValue(OpcUaAddress address) throws Exception {
@@ -220,4 +163,13 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
                 address.getDeadband()
         );
     }
+
+    private DeviceConnection ensureConnectionConfig() {
+        if (deviceInfo.getConnectionConfig() == null) {
+            deviceInfo.setConnectionConfig(new DeviceConnection());
+        }
+        return deviceInfo.getConnectionConfig();
+    }
+
+
 }

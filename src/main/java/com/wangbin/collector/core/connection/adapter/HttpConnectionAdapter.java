@@ -1,8 +1,8 @@
 package com.wangbin.collector.core.connection.adapter;
 
 import com.alibaba.fastjson2.JSON;
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.net.ssl.SSLContext;
@@ -34,8 +34,8 @@ public class HttpConnectionAdapter extends AbstractConnectionAdapter<HttpClient>
     private Map<String, String> customHeaders;
     private ExecutorService executorService;
 
-    public HttpConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public HttpConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
         initialize();
     }
 
@@ -247,7 +247,7 @@ public class HttpConnectionAdapter extends AbstractConnectionAdapter<HttpClient>
             if (authToken != null) {
                 customHeaders.put("Authorization", "Bearer " + authToken);
             }
-            log.info("HTTP认证成功: {}", config.getDeviceId());
+            log.info("HTTP认证成功: {}", deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
         } else {
             throw new Exception("HTTP认证失败: 状态码 " + response.statusCode());
         }
@@ -349,9 +349,11 @@ public class HttpConnectionAdapter extends AbstractConnectionAdapter<HttpClient>
         }
 
         // 添加设备信息
-        authParams.put("deviceId", config.getDeviceId());
-        if (config.getProductKey() != null) {
-            authParams.put("productKey", config.getProductKey());
+        if (deviceInfo != null && deviceInfo.getDeviceId() != null) {
+            authParams.put("deviceId", deviceInfo.getDeviceId());
+        }
+        if (deviceInfo != null && deviceInfo.getProductKey() != null) {
+            authParams.put("productKey", deviceInfo.getProductKey());
         }
         if (config.getDeviceSecret() != null) {
             authParams.put("deviceSecret", config.getDeviceSecret());

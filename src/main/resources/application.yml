@@ -65,9 +65,10 @@ collector:
     collect-timeout-ms: 800
 
   config:
-    ruoyi-url: http://localhost:8080
+    yun-url: http://localhost:48080
     sync-interval: 30000
     service-id: collector-1
+    tenant-id: 1
     api-token: ""
 
   cache:

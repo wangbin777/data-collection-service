@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.collector.protocol.iec.base;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.config.CollectorProperties;
@@ -61,18 +62,10 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         this.host = deviceInfo.getIpAddress();
         this.port = deviceInfo.getPort() != null ? deviceInfo.getPort() : 2404;
 
-        Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
-        if (protocolConfig != null) {
-            this.commonAddress = (int) protocolConfig.getOrDefault("unitId",
-                    iec104Config != null ? iec104Config.getCommonAddress() : 1);
-            this.timeout = (int) protocolConfig.getOrDefault("timeout",
-                    iec104Config != null ? iec104Config.getTimeout() : 5000);
-            this.timeTag = (boolean) protocolConfig.getOrDefault("timeTag", true);
-        } else if (iec104Config != null) {
-            this.commonAddress = iec104Config.getCommonAddress();
-            this.timeout = iec104Config.getTimeout();
-        }
-
+        DeviceConnection connectionConfig = deviceInfo.getConnectionConfig();
+        this.commonAddress = connectionConfig.getSlaveId();
+        this.timeout = connectionConfig.getTimeout();
+        this.timeTag = true;
         if (interrogationScheduler == null) {
             interrogationScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "iec104-interrogation");

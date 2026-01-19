@@ -1,6 +1,7 @@
 package com.wangbin.collector.core.collector.protocol.iec.base;
 
 import com.beanit.iec61850bean.*;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.iec.domain.Iec61850Address;
@@ -39,35 +40,8 @@ public abstract class AbstractIec61850Collector extends BaseCollector {
 
         this.host = deviceInfo.getIpAddress();
         this.port = deviceInfo.getPort() != null ? deviceInfo.getPort() : 102;
-
-        Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
-        if (protocolConfig != null && protocolConfig.containsKey("port")) {
-            Object rawPort = protocolConfig.get("port");
-            if (rawPort instanceof Number number) {
-                this.port = number.intValue();
-            } else {
-                try {
-                    this.port = Integer.parseInt(String.valueOf(rawPort));
-                } catch (NumberFormatException ignore) {
-                    // keep default
-                }
-            }
-        }
-
-        if (protocolConfig != null && protocolConfig.containsKey("timeout")) {
-            Object rawTimeout = protocolConfig.get("timeout");
-            if (rawTimeout instanceof Number number) {
-                this.timeout = number.intValue();
-            } else {
-                try {
-                    this.timeout = Integer.parseInt(String.valueOf(rawTimeout));
-                } catch (NumberFormatException ignore) {
-                    // keep default
-                }
-            }
-        } else if (iec61850Config != null && iec61850Config.getTimeout() > 0) {
-            this.timeout = iec61850Config.getTimeout();
-        }
+        DeviceConnection connectionConfig = deviceInfo.getConnectionConfig();
+        this.timeout = connectionConfig.getTimeout();
     }
 
     protected ClientEventListener createClientEventListener() {

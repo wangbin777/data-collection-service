@@ -2,9 +2,9 @@ package com.wangbin.collector.core.connection.adapter;
 
 import com.digitalpetri.modbus.client.ModbusRtuClient;
 import com.digitalpetri.modbus.serial.client.SerialPortClientTransport;
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
 import com.wangbin.collector.core.connection.dispatch.OverflowStrategy;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -23,8 +23,8 @@ public class ModbusRtuConnectionAdapter extends AbstractConnectionAdapter {
     private SerialPortClientTransport transport;
     private MessageBatchDispatcher<ModbusOperation<?>> dispatcher;
 
-    public ModbusRtuConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public ModbusRtuConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
     }
 
     @Override

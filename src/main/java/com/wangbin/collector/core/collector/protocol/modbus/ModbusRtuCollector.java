@@ -5,6 +5,7 @@ import com.digitalpetri.modbus.pdu.*;
 import com.digitalpetri.modbus.serial.client.SerialPortClientTransport;
 import com.fazecast.jSerialComm.SerialPort;
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.enums.DataType;
 import com.wangbin.collector.common.enums.Parity;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
@@ -61,17 +62,16 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
     @Override
     protected void doConnect() throws Exception {
         log.info("开始建立 Modbus RTU 连接: {}", deviceInfo.getDeviceId());
-        Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
+        DeviceConnection connectionConfig = deviceInfo.getConnectionConfig();
 
-        interFrameDelay = (Integer)protocolConfig.getOrDefault("interFrameDelay",5);
-        serialPort = (String) protocolConfig.getOrDefault("serialPort", "COM4");
-        baudRate = (Integer) protocolConfig.getOrDefault("baudRate", 9600);
-        dataBits = (Integer) protocolConfig.getOrDefault("dataBits", 8);
-        stopBits = (Integer) protocolConfig.getOrDefault("stopBits", 1);
-        String parity1 = (String)protocolConfig.getOrDefault("parity", Parity.even.name());
-        parity = Parity.fromName(parity1).getValue();
-        timeout = (Integer) protocolConfig.getOrDefault("timeout", 3000);
-        slaveId = (Integer) protocolConfig.getOrDefault("slaveId", 1);
+        interFrameDelay = connectionConfig.getInterFrameDelay();
+        serialPort = connectionConfig.getSerialPort();
+        baudRate = connectionConfig.getBaudRate();
+        dataBits = connectionConfig.getDataBits();
+        stopBits = connectionConfig.getStopBits();
+        parity = Parity.fromName(connectionConfig.getParity()).getValue();
+        timeout = connectionConfig.getReadTimeout();
+        slaveId = connectionConfig.getSlaveId();
 
         var transport = SerialPortClientTransport.create(cfg -> {
             cfg.setSerialPort(serialPort);

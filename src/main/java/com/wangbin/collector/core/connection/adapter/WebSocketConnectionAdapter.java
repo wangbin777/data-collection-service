@@ -1,7 +1,7 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.net.ssl.SSLContext;
@@ -79,8 +79,8 @@ public class WebSocketConnectionAdapter extends AbstractConnectionAdapter<WebSoc
         }
     };
 
-    public WebSocketConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public WebSocketConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
         initialize();
     }
 
@@ -89,7 +89,8 @@ public class WebSocketConnectionAdapter extends AbstractConnectionAdapter<WebSoc
         this.customHeaders = getCustomHeaders();
         this.messageQueue = new LinkedBlockingQueue<>();
         this.heartbeatScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "websocket-heartbeat-" + config.getDeviceId());
+            String id = deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN";
+            Thread thread = new Thread(r, "websocket-heartbeat-" + id);
             thread.setDaemon(true);
             return thread;
         });
@@ -397,16 +398,18 @@ public class WebSocketConnectionAdapter extends AbstractConnectionAdapter<WebSoc
                 throw new Exception("WebSocket认证失败: " + responseStr);
             }
 
-            log.info("WebSocket认证成功: {}", config.getDeviceId());
+            log.info("WebSocket认证成功: {}", deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
         } else {
-            log.info("WebSocket认证消息已发送: {}", config.getDeviceId());
+            log.info("WebSocket认证消息已发送: {}", deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
         }
     }
 
     private String buildAuthMessage() {
         Map<String, Object> authData = new java.util.HashMap<>();
         authData.put("action", "auth");
-        authData.put("deviceId", config.getDeviceId());
+        if (deviceInfo != null && deviceInfo.getDeviceId() != null) {
+            authData.put("deviceId", deviceInfo.getDeviceId());
+        }
         authData.put("timestamp", System.currentTimeMillis());
 
         if (config.getUsername() != null) {

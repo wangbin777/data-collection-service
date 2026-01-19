@@ -421,7 +421,6 @@ public class ConfigManager {
                 !Objects.equals(oldDevice.getPort(), newDevice.getPort()) ||
                 !Objects.equals(oldDevice.getProtocolType(), newDevice.getProtocolType()) ||
                 !Objects.equals(oldDevice.getConnectionType(), newDevice.getConnectionType()) ||
-                !Objects.equals(oldDevice.getProtocolConfig(), newDevice.getProtocolConfig()) ||
                 !Objects.equals(oldDevice.getConnectionConfig(), newDevice.getConnectionConfig()) ||
                 !Objects.equals(oldDevice.getAuthConfig(), newDevice.getAuthConfig());
     }

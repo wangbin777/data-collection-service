@@ -32,19 +32,6 @@ public class Iec104ConnectionManager {
         this.config = new Iec104Config();
     }
 
-    /**
-     * 初始化配置
-     */
-    public void initConfig(DeviceInfo deviceInfo) {
-        config.setHost(deviceInfo.getIpAddress());
-        config.setPort(deviceInfo.getPort() != null ? deviceInfo.getPort() : 2404);
-
-        Map<String, Object> protocolConfig = deviceInfo.getProtocolConfig();
-        if (protocolConfig != null) {
-            config.setCommonAddress(getIntValue(protocolConfig, "commonAddress", 1));
-            config.setTimeout(getIntValue(protocolConfig, "timeout", 5000));
-        }
-    }
 
     /**
      * 建立连接

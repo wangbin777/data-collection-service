@@ -1,10 +1,10 @@
 package com.wangbin.collector.core.collector.protocol.http;
 
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import com.wangbin.collector.core.connection.adapter.HttpConnectionAdapter;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -16,7 +16,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class HttpCollector extends BaseCollector {
 
-    private ConnectionConfig managedConnectionConfig;
     private HttpConnectionAdapter httpConnection;
     
     private final Map<String, DataPoint> pointDefinitions = new ConcurrentHashMap<>();
@@ -38,8 +37,8 @@ public class HttpCollector extends BaseCollector {
             throw new IllegalStateException("连接管理器未初始化");
         }
         
-        this.managedConnectionConfig = buildConnectionConfig();
-        ConnectionAdapter adapter = connectionManager.createConnection(managedConnectionConfig);
+        prepareConnectionConfig();
+        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo);
         connectionManager.connect(deviceInfo.getDeviceId());
         
         if (!(adapter instanceof HttpConnectionAdapter httpAdapter)) {
@@ -55,7 +54,6 @@ public class HttpCollector extends BaseCollector {
             connectionManager.removeConnection(deviceInfo.getDeviceId());
         }
         httpConnection = null;
-        managedConnectionConfig = null;
         latestValues.clear();
         pointDefinitions.clear();
     }
@@ -165,21 +163,34 @@ public class HttpCollector extends BaseCollector {
         }
     }
     
-    private ConnectionConfig buildConnectionConfig() {
-        ConnectionConfig config = new ConnectionConfig();
-        config.setDeviceId(deviceInfo.getDeviceId());
-        config.setProtocolType("HTTP");
-        config.setConnectionType("HTTP");
-        config.setHost(deviceInfo.getIpAddress());
-        config.setPort(deviceInfo.getPort());
-        config.setTimeout(5000);
-        
-        Map<String, Object> params = new HashMap<>();
-        // 添加HTTP特定的连接参数
-        params.put("url", "http://" + deviceInfo.getIpAddress() + ":" + deviceInfo.getPort());
-        params.put("method", "GET");
-        
-        config.setExtraParams(params);
-        return config;
+    private void prepareConnectionConfig() {
+        DeviceConnection config = ensureConnectionConfig();
+        if (config.getConnectionType() == null || config.getConnectionType().isBlank()) {
+            config.setConnectionType("HTTP");
+        }
+        if (config.getHost() == null && deviceInfo.getIpAddress() != null) {
+            config.setHost(deviceInfo.getIpAddress());
+        }
+        if (config.getPort() == null && deviceInfo.getPort() != null) {
+            config.setPort(deviceInfo.getPort());
+        }
+        if (config.getUrl() == null && config.getHost() != null && config.getPort() != null) {
+            config.setUrl("http://" + config.getHost() + ":" + config.getPort());
+        }
+        /*Map<String, Object> props = config.getProperties();
+        if (props == null) {
+            props = new HashMap<>();
+            config.setProperties(props);
+        }
+        props.putIfAbsent("method", "GET");
+        props.putIfAbsent("sendEndpoint", "/api/data");
+        props.putIfAbsent("receiveEndpoint", "/api/receive");*/
+    }
+
+    private DeviceConnection ensureConnectionConfig() {
+        if (deviceInfo.getConnectionConfig() == null) {
+            deviceInfo.setConnectionConfig(new DeviceConnection());
+        }
+        return deviceInfo.getConnectionConfig();
     }
 }

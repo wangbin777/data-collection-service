@@ -1,7 +1,7 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -29,8 +29,8 @@ public class TcpConnectionAdapter extends AbstractConnectionAdapter<Channel> {
     private EventLoopGroup workerGroup;
     private TcpClientHandler clientHandler;
 
-    public TcpConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public TcpConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
         initialize();
     }
 
@@ -97,7 +97,7 @@ public class TcpConnectionAdapter extends AbstractConnectionAdapter<Channel> {
     protected void doDisconnect() throws Exception {
         if (channel != null && channel.isActive()) {
             channel.close().sync();
-            log.info("TCP连接断开成功: {}", config.getDeviceId());
+            log.info("TCP连接断开成功: {}", deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
         }
 
         if (workerGroup != null) {
@@ -167,7 +167,7 @@ public class TcpConnectionAdapter extends AbstractConnectionAdapter<Channel> {
             throw new Exception("TCP认证失败");
         }
 
-        log.info("TCP认证成功: {}", config.getDeviceId());
+        log.info("TCP认证成功: {}", deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN");
     }
 
     /**

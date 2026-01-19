@@ -787,7 +787,7 @@ public class CollectionScheduler {
         for (String deviceId : deviceIds) {
             try {
                 DeviceInfo deviceInfo = configManager.getDevice(deviceId);
-                if (deviceInfo != null && deviceInfo.getProtocolConfig() != null ) {
+                if (deviceInfo != null && deviceInfo.getConnectionConfig() != null ) {
                     if (startDevice(deviceId)) {
                         successCount++;
                     } else {

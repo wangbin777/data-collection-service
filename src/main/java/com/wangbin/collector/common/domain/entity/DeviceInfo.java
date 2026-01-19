@@ -1,5 +1,6 @@
 package com.wangbin.collector.common.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.util.Date;
@@ -21,6 +22,7 @@ public class DeviceInfo {
     private Long id;
 
     /** 设备唯一标识 */
+    @JsonProperty("id")
     private String deviceId;
 
     /** 设备名称 */
@@ -55,11 +57,8 @@ public class DeviceInfo {
     /** 设备端口号 */
     private Integer port;
 
-    /** 协议相关配置，JSON格式 */
-    private Map<String, Object> protocolConfig;
-
     /** 连接相关配置，JSON格式 */
-    private Map<String, Object> connectionConfig;
+    private DeviceConnection connectionConfig;
 
     /** 认证相关配置，JSON格式 */
     private Map<String, Object> authConfig;
@@ -241,31 +240,6 @@ public class DeviceInfo {
         return ipAddress;
     }
 
-    /**
-     * 从协议配置中获取指定参数的值
-     *
-     * @param key 参数键
-     * @return 参数值，不存在返回null
-     */
-    public Object getProtocolParam(String key) {
-        if (protocolConfig == null || key == null) {
-            return null;
-        }
-        return protocolConfig.get(key);
-    }
-
-    /**
-     * 从连接配置中获取指定参数的值
-     *
-     * @param key 参数键
-     * @return 参数值，不存在返回null
-     */
-    public Object getConnectionParam(String key) {
-        if (connectionConfig == null || key == null) {
-            return null;
-        }
-        return connectionConfig.get(key);
-    }
 
     /**
      * 从认证配置中获取指定参数的值
@@ -373,7 +347,7 @@ public class DeviceInfo {
                 !Objects.equals(this.port, other.port) ||
                 !Objects.equals(this.protocolType, other.protocolType) ||
                 !Objects.equals(this.connectionType, other.connectionType) ||
-                !Objects.equals(this.protocolConfig, other.protocolConfig) ||
+                !Objects.equals(this.connectionConfig, other.connectionConfig) ||
                 !Objects.equals(this.collectionInterval, other.collectionInterval) ||
                 !Objects.equals(this.reportInterval, other.reportInterval);
     }
@@ -393,4 +367,5 @@ public class DeviceInfo {
         }
         return "未知";
     }
+
 }

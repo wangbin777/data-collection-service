@@ -1,7 +1,7 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.exception.CollectorException;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.milo.opcua.sdk.client.DiscoveryClient;
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
@@ -36,8 +36,8 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
     private String securityPolicy;
     private MessageSecurityMode securityMode;
 
-    public OpcUaConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public OpcUaConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
     }
 
     @Override
@@ -111,16 +111,10 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
         if (config.getUrl() != null && !config.getUrl().isBlank()) {
             return config.getUrl();
         }
-        Map<String, Object> protocol = config.getProtocolConfig();
-        if (protocol != null) {
-            Object url = protocol.get("endpointUrl");
-            if (url instanceof String str && !str.isBlank()) {
-                return str;
-            }
-            Object endpoint = protocol.get("endpoint");
-            if (endpoint instanceof String str && !str.isBlank()) {
-                return str;
-            }
+        String override = config.getStringConfig("endpointUrl",
+                config.getStringConfig("endpoint", null));
+        if (override != null && !override.isBlank()) {
+            return override;
         }
         if (config.getHost() != null && !config.getHost().isBlank()) {
             int port = config.getPort() != null && config.getPort() > 0 ? config.getPort() : 4840;
@@ -130,9 +124,7 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
     }
 
     private String resolveSecurityPolicy() {
-        Map<String, Object> protocol = config.getProtocolConfig();
-        Object policy = protocol != null ? protocol.get("securityPolicy") : null;
-        String text = policy != null ? policy.toString() : "None";
+        String text = config.getStringConfig("securityPolicy", "None");
         if (text.startsWith(OPC_POLICY_URI_PREFIX)) {
             return text;
         }
@@ -146,12 +138,10 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
     }
 
     private MessageSecurityMode resolveSecurityMode() {
-        Map<String, Object> protocol = config.getProtocolConfig();
-        Object mode = protocol != null ? protocol.get("messageMode") : null;
-        if (mode == null) {
+        String text = config.getStringConfig("messageMode", "None");
+        if (text == null || text.isBlank()) {
             return MessageSecurityMode.None;
         }
-        String text = mode.toString().trim();
         for (MessageSecurityMode value : MessageSecurityMode.values()) {
             if (value.name().equalsIgnoreCase(text)) {
                 return value;
@@ -167,11 +157,8 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
         if (config.getTimeout() != null && config.getTimeout() > 0) {
             return config.getTimeout();
         }
-        Map<String, Object> protocol = config.getProtocolConfig();
-        if (protocol != null && protocol.get("requestTimeout") != null) {
-            return Long.parseLong(protocol.get("requestTimeout").toString());
-        }
-        return 5000;
+        Long timeout = config.getLongConfig("requestTimeout", null);
+        return timeout != null && timeout > 0 ? timeout : 5000;
     }
 
     private long resolveConnectTimeout() {
@@ -195,7 +182,8 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
 
     private EndpointDescription selectEndpoint(List<EndpointDescription> endpoints) {
         if (endpoints == null || endpoints.isEmpty()) {
-            throw new CollectorException("No OPC UA endpoints available", config.getDeviceId(), null);
+            String deviceId = deviceInfo != null ? deviceInfo.getDeviceId() : null;
+            throw new CollectorException("No OPC UA endpoints available", deviceId, null);
         }
         for (EndpointDescription endpoint : endpoints) {
             boolean policyMatch = endpoint.getSecurityPolicyUri() != null &&

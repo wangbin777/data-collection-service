@@ -1,6 +1,7 @@
 package com.wangbin.collector.core.collector.protocol.modbus;
 
 import com.digitalpetri.modbus.pdu.*;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.enums.DataType;
 import com.wangbin.collector.core.collector.protocol.modbus.base.AbstractModbusCollector;
@@ -13,7 +14,6 @@ import com.wangbin.collector.core.collector.protocol.modbus.utils.ModbusUtils;
 import com.wangbin.collector.core.config.CollectorProperties;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import com.wangbin.collector.core.connection.adapter.ModbusTcpConnectionAdapter;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,7 +30,6 @@ import java.util.concurrent.TimeUnit;
 public class ModbusTcpCollector extends AbstractModbusCollector {
 
     private ModbusTcpConnectionAdapter connectionAdapter;
-    private ConnectionConfig managedConnectionConfig;
     private String host;
     private int port;
     private static final int MAX_WRITE_REGISTERS = 123;
@@ -48,16 +47,22 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     @Override
     protected void doConnect() throws Exception {
         log.info("开始建立Modbus TCP连接: {}", deviceInfo.getDeviceId());
-        this.managedConnectionConfig = buildConnectionConfig();
-        ConnectionAdapter adapter = connectionManager.createConnection(managedConnectionConfig);
+        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo);
         connectionManager.connect(deviceInfo.getDeviceId());
         if (!(adapter instanceof ModbusTcpConnectionAdapter modbusAdapter)) {
             throw new IllegalStateException("Modbus TCP连接适配器类型不匹配");
         }
         this.connectionAdapter = modbusAdapter;
-        this.timeout = managedConnectionConfig.getReadTimeout() != null
-                ? managedConnectionConfig.getReadTimeout()
-                : managedConnectionConfig.getTimeout();
+        DeviceConnection connectionConfig = deviceInfo.getConnectionConfig();
+        this.timeout = connectionConfig != null && connectionConfig.getReadTimeout() != null
+                ? connectionConfig.getReadTimeout()
+                : connectionConfig != null ? connectionConfig.getTimeout() : null;
+        if (this.timeout <= 0) {
+            CollectorProperties.ModbusConfig defaults = collectorProperties != null
+                    ? collectorProperties.getModbus()
+                    : new CollectorProperties.ModbusConfig();
+            this.timeout = defaults.getTimeout();
+        }
         log.info("Modbus TCP连接建立成功: {}:{}", host, port);
     }
 
@@ -67,7 +72,6 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             connectionManager.removeConnection(deviceInfo.getDeviceId());
         }
         connectionAdapter = null;
-        managedConnectionConfig = null;
         registerCache.clear();
         log.info("Modbus TCP连接已断开");
     }
@@ -537,21 +541,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     }
 
     private Integer getConfiguredSlaveId() {
-        if (deviceInfo == null || deviceInfo.getProtocolConfig() == null) {
-            return null;
-        }
-        Object value = deviceInfo.getProtocolConfig().get("slaveId");
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value instanceof String str && !str.isBlank()) {
-            try {
-                return Integer.parseInt(str);
-            } catch (NumberFormatException e) {
-                log.warn("无法解析设备 {} 的 slaveId: {}", deviceInfo.getDeviceId(), str);
-            }
-        }
-        return null;
+        return deviceInfo.getConnectionConfig().getSlaveId();
     }
 
     private void processWriteBatch(BatchKey key,
@@ -696,46 +686,11 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         return connectionAdapter;
     }
 
-    private ConnectionConfig buildConnectionConfig() {
-        ConnectionConfig config = new ConnectionConfig();
-        config.setDeviceId(deviceInfo.getDeviceId());
-        config.setDeviceName(deviceInfo.getDeviceName());
-        config.setProtocolType(getProtocolType());
-        config.setConnectionType("MODBUS_TCP");
-        config.setGroupId(deviceInfo.getGroupId());
-        CollectorProperties.ModbusConfig defaults = collectorProperties != null
-                ? collectorProperties.getModbus()
-                : new CollectorProperties.ModbusConfig();
-        Map<String, Object> protocol = deviceInfo.getProtocolConfig() != null
-                ? new HashMap<>(deviceInfo.getProtocolConfig())
-                : new HashMap<>();
-        host = deviceInfo.getIpAddress() != null ? deviceInfo.getIpAddress() : (String) protocol.getOrDefault("host", "127.0.0.1");
-        Object portOverride = protocol.getOrDefault("port", deviceInfo.getPort());
-        port = portOverride instanceof Number ? ((Number) portOverride).intValue()
-                : portOverride != null ? Integer.parseInt(portOverride.toString()) : 502;
-        int timeoutConfig = resolveInt(protocol, "timeout", defaults.getTimeout());
-        config.setHost(host);
-        config.setPort(port);
-        config.setReadTimeout(timeoutConfig);
-        config.setWriteTimeout(timeoutConfig);
-        config.setConnectTimeout(resolveInt(deviceInfo.getConnectionConfig(), "connectTimeout", 5000));
-        config.setMaxGroupConnections(resolveInt(deviceInfo.getConnectionConfig(), "maxGroupConnections", 0));
-        config.setMaxPendingMessages(resolveInt(deviceInfo.getConnectionConfig(), "maxPendingMessages", 1024));
-        config.setDispatchBatchSize(resolveInt(deviceInfo.getConnectionConfig(), "dispatchBatchSize", 1));
-        config.setDispatchFlushInterval(resolveLong(deviceInfo.getConnectionConfig(), "dispatchFlushInterval", 0L));
-        config.setOverflowStrategy(resolveString(deviceInfo.getConnectionConfig(), "overflowStrategy", "BLOCK"));
-        config.setProtocolConfig(protocol);
-        if (deviceInfo.getConnectionConfig() != null) {
-            config.setExtraParams(new HashMap<>(deviceInfo.getConnectionConfig()));
-        }
-        return config;
-    }
 
-    private int resolveInt(Map<String, Object> source, String key, int defaultValue) {
-        if (source == null || !source.containsKey(key) || source.get(key) == null) {
+    private int parseInt(Object value, int defaultValue) {
+        if (value == null) {
             return defaultValue;
         }
-        Object value = source.get(key);
         if (value instanceof Number number) {
             return number.intValue();
         }
@@ -746,27 +701,17 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
     }
 
-    private long resolveLong(Map<String, Object> source, String key, long defaultValue) {
-        if (source == null || !source.containsKey(key) || source.get(key) == null) {
-            return defaultValue;
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
         }
-        Object value = source.get(key);
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return Long.parseLong(value.toString());
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
+        return null;
     }
 
-    private String resolveString(Map<String, Object> source, String key, String defaultValue) {
-        if (source == null || !source.containsKey(key) || source.get(key) == null) {
-            return defaultValue;
-        }
-        String val = source.get(key).toString();
-        return val.isBlank() ? defaultValue : val;
+    private String toString(Object value) {
+        return value != null ? value.toString() : null;
     }
 
     private boolean asBoolean(Object value) {
@@ -796,5 +741,3 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         return connectionAdapter != null && connectionAdapter.isConnected();
     }
 }
-
-

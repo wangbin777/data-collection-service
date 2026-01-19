@@ -1,8 +1,8 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
 import com.wangbin.collector.core.connection.dispatch.OverflowStrategy;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.californium.core.CoapClient;
 
@@ -23,8 +23,8 @@ public class CoapConnectionAdapter extends AbstractConnectionAdapter<CoapClient>
     private String baseUri;
     private MessageBatchDispatcher<CoapRequest<?>> dispatcher;
 
-    public CoapConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public CoapConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
     }
 
     @Override

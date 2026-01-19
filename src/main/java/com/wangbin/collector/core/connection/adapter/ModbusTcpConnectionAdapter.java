@@ -2,9 +2,9 @@ package com.wangbin.collector.core.connection.adapter;
 
 import com.digitalpetri.modbus.client.ModbusTcpClient;
 import com.digitalpetri.modbus.tcp.client.NettyTcpClientTransport;
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
 import com.wangbin.collector.core.connection.dispatch.OverflowStrategy;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -22,8 +22,8 @@ public class ModbusTcpConnectionAdapter extends AbstractConnectionAdapter {
     private ModbusTcpClient client;
     private MessageBatchDispatcher<ModbusOperation<?>> dispatcher;
 
-    public ModbusTcpConnectionAdapter(ConnectionConfig config) {
-        super(config);
+    public ModbusTcpConnectionAdapter(DeviceInfo deviceInfo) {
+        super(deviceInfo);
     }
 
     @Override

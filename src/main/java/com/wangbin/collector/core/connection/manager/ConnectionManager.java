@@ -1,10 +1,11 @@
 package com.wangbin.collector.core.connection.manager;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
+import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
 import com.wangbin.collector.common.exception.CollectorException;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import com.wangbin.collector.core.connection.factory.ConnectionFactory;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import com.wangbin.collector.core.connection.model.ConnectionMetrics;
 import com.wangbin.collector.monitor.metrics.ExceptionMonitorService;
 import jakarta.annotation.PostConstruct;
@@ -65,8 +66,11 @@ public class ConnectionManager {
     /**
      * 创建连接
      */
-    public ConnectionAdapter createConnection(ConnectionConfig config) {
-        String deviceId = config.getDeviceId();
+    public ConnectionAdapter createConnection(DeviceInfo deviceInfo) {
+        if (deviceInfo == null || deviceInfo.getDeviceId() == null || deviceInfo.getDeviceId().isBlank()) {
+            throw new CollectorException("设备信息无效", null, null);
+        }
+        String deviceId = deviceInfo.getDeviceId();
 
         synchronized (connections) {
             if (connections.containsKey(deviceId)) {
@@ -80,13 +84,13 @@ public class ConnectionManager {
             }
 
             try {
-                validateGroupCapacity(config);
+                validateGroupCapacity(deviceInfo);
                 // 创建新连接
-                ConnectionAdapter connection = connectionFactory.createConnection(config);
+                ConnectionAdapter connection = connectionFactory.createConnection(deviceInfo);
                 connections.put(deviceId, connection);
 
                 // 添加到分组
-                addToGroup(config, deviceId);
+                addToGroup(deviceInfo);
 
                 // 通知连接创建
                 notifyConnectionCreated(connection);
@@ -343,7 +347,8 @@ public class ConnectionManager {
                 log.warn("连接心跳超时: {}", connection.getDeviceId());
                 notifyHeartbeatTimeout(connection);
 
-                if (connection.getConfig().isAutoReconnect()) {
+                DeviceConnection cfg = connection.getConnectionConfig();
+                if (cfg != null && cfg.isAutoReconnect()) {
                     reconnect(connection.getDeviceId());
                 }
             } else {
@@ -357,12 +362,12 @@ public class ConnectionManager {
     }
 
     private long resolveHeartbeatTimeout(ConnectionAdapter connection) {
-        ConnectionConfig config = connection.getConfig();
-        long interval = Optional.ofNullable(config.getHeartbeatInterval())
+        DeviceConnection config = connection.getConnectionConfig();
+        long interval = Optional.ofNullable(config != null ? config.getHeartbeatInterval() : null)
                 .map(Integer::longValue)
                 .filter(value -> value > 0)
                 .orElse(30_000L);
-        return Optional.ofNullable(config.getHeartbeatTimeout())
+        return Optional.ofNullable(config != null ? config.getHeartbeatTimeout() : null)
                 .map(Integer::longValue)
                 .filter(value -> value > 0)
                 .orElse(interval * 3);
@@ -399,28 +404,35 @@ public class ConnectionManager {
     /**
      * 添加到分组
      */
-    private void addToGroup(ConnectionConfig config, String deviceId) {
-        String groupId = config.getGroupId();
+    private void addToGroup(DeviceInfo deviceInfo) {
+        if (deviceInfo == null) {
+            return;
+        }
+        String groupId = deviceInfo.getGroupId();
         if (groupId == null || groupId.isEmpty()) {
             return;
         }
         groupConnections
                 .computeIfAbsent(groupId, key -> ConcurrentHashMap.newKeySet())
-                .add(deviceId);
+                .add(deviceInfo.getDeviceId());
     }
 
-    private void validateGroupCapacity(ConnectionConfig config) {
-        String groupId = config.getGroupId();
+    private void validateGroupCapacity(DeviceInfo deviceInfo) {
+        if (deviceInfo == null) {
+            return;
+        }
+        String groupId = deviceInfo.getGroupId();
         if (groupId == null || groupId.isEmpty()) {
             return;
         }
-        int maxConnections = Optional.ofNullable(config.getMaxGroupConnections()).orElse(0);
+        DeviceConnection config = deviceInfo.getConnectionConfig();
+        int maxConnections = Optional.ofNullable(config != null ? config.getMaxGroupConnections() : null).orElse(0);
         if (maxConnections <= 0) {
             return;
         }
         Set<String> members = groupConnections.get(groupId);
         if (members != null && members.size() >= maxConnections) {
-            throw new CollectorException("分组连接数已达到限制", config.getDeviceId(), null);
+            throw new CollectorException("分组连接数已达到限制", deviceInfo.getDeviceId(), null);
         }
     }
 

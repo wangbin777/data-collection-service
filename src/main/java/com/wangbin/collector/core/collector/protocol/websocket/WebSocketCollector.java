@@ -1,10 +1,10 @@
 package com.wangbin.collector.core.collector.protocol.websocket;
 
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import com.wangbin.collector.core.connection.adapter.WebSocketConnectionAdapter;
-import com.wangbin.collector.core.connection.model.ConnectionConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -17,9 +17,8 @@ import java.util.function.Consumer;
 @Slf4j
 public class WebSocketCollector extends BaseCollector {
 
-    private ConnectionConfig managedConnectionConfig;
     private WebSocketConnectionAdapter webSocketConnection;
-    
+
     private final Map<String, DataPoint> pointDefinitions = new ConcurrentHashMap<>();
     private final Map<String, Object> latestValues = new ConcurrentHashMap<>();
     private final Map<String, Long> latestTimestamps = new ConcurrentHashMap<>();
@@ -42,8 +41,8 @@ public class WebSocketCollector extends BaseCollector {
             throw new IllegalStateException("连接管理器未初始化");
         }
         
-        this.managedConnectionConfig = buildConnectionConfig();
-        ConnectionAdapter adapter = connectionManager.createConnection(managedConnectionConfig);
+        prepareConnectionConfig();
+        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo);
         connectionManager.connect(deviceInfo.getDeviceId());
         
         if (!(adapter instanceof WebSocketConnectionAdapter webSocketAdapter)) {
@@ -60,7 +59,6 @@ public class WebSocketCollector extends BaseCollector {
         }
         
         webSocketConnection = null;
-        managedConnectionConfig = null;
         latestValues.clear();
         latestTimestamps.clear();
         pointDefinitions.clear();
@@ -192,21 +190,34 @@ public class WebSocketCollector extends BaseCollector {
     /**
      * 构建连接配置
      */
-     private ConnectionConfig buildConnectionConfig() {
-         ConnectionConfig config = new ConnectionConfig();
-         config.setDeviceId(deviceInfo.getDeviceId());
-         config.setProtocolType("WEBSOCKET");
-         config.setConnectionType("WEBSOCKET");
-         config.setHost(deviceInfo.getIpAddress());
-         config.setPort(deviceInfo.getPort());
-         config.setTimeout(5000);
-         
-         Map<String, Object> params = new HashMap<>();
-         // 添加WebSocket特定的连接参数
-         params.put("url", "ws://" + deviceInfo.getIpAddress() + ":" + deviceInfo.getPort());
-         
-         config.setExtraParams(params);
-         return config;
+     private void prepareConnectionConfig() {
+         DeviceConnection config = ensureConnectionConfig();
+         if (config.getConnectionType() == null || config.getConnectionType().isBlank()) {
+             config.setConnectionType("WEBSOCKET");
+         }
+         if (config.getHost() == null && deviceInfo.getIpAddress() != null) {
+             config.setHost(deviceInfo.getIpAddress());
+         }
+         if (config.getPort() == null && deviceInfo.getPort() != null) {
+             config.setPort(deviceInfo.getPort());
+         }
+         if (config.getUrl() == null && config.getHost() != null && config.getPort() != null) {
+             String scheme = Boolean.TRUE.equals(config.getSslEnabled()) ? "wss" : "ws";
+             config.setUrl(scheme + "://" + config.getHost() + ":" + config.getPort());
+         }
+         /*Map<String, Object> props = config.getProperties();
+         if (props == null) {
+             props = new HashMap<>();
+             config.setProperties(props);
+         }
+         props.putIfAbsent("path", "/ws");*/
+     }
+
+     private DeviceConnection ensureConnectionConfig() {
+         if (deviceInfo.getConnectionConfig() == null) {
+             deviceInfo.setConnectionConfig(new DeviceConnection());
+         }
+         return deviceInfo.getConnectionConfig();
      }
     
     /**
