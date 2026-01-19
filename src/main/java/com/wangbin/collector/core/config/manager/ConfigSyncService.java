@@ -36,8 +36,8 @@ public class ConfigSyncService {
     /**
      * RuoYi管理平台地址
      */
-    @Value("${collector.config.ruoyi-url:http://localhost:8080}")
-    private String ruoyiUrl;
+    @Value("${collector.config.yun-url:http://localhost:8080}")
+    private String runUrl;
 
     /**
      * 配置同步间隔（毫秒）
@@ -91,7 +91,7 @@ public class ConfigSyncService {
      */
     @PostConstruct
     public void init() {
-        log.info("配置同步服务初始化，服务ID: {}, RuoYi地址: {}", serviceId, ruoyiUrl);
+        log.info("配置同步服务初始化，服务ID: {}, RuoYi地址: {}", serviceId, runUrl);
     }
 
     /**
@@ -182,7 +182,7 @@ public class ConfigSyncService {
      */
     public List<DeviceInfo> loadAllDevices() {
         try {
-            String url = ruoyiUrl + "/api/collector/config/devices?serviceId=" + serviceId;
+            String url = runUrl + "/iot/collector/config/devices?serviceId=" + serviceId;
 
             ResponseEntity<DeviceInfo[]> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(), DeviceInfo[].class);
@@ -244,7 +244,7 @@ public class ConfigSyncService {
      */
     public DeviceInfo loadDevice(String deviceId) {
         try {
-            String url = ruoyiUrl + "/api/collector/config/device/" + deviceId;
+            String url = runUrl + "/iot/collector/config/device/" + deviceId;
 
             ResponseEntity<DeviceInfo> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(), DeviceInfo.class);
@@ -272,7 +272,7 @@ public class ConfigSyncService {
      */
     public List<DataPoint> loadDataPoints(String deviceId) {
         try {
-            String url = ruoyiUrl + "/api/collector/config/points/" + deviceId;
+            String url = runUrl + "/iot/collector/config/points/" + deviceId;
 
             ResponseEntity<DataPoint[]> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(), DataPoint[].class);
@@ -289,8 +289,8 @@ public class ConfigSyncService {
             log.error("加载数据点配置失败: {}", deviceId, e);
         }
 
-        //return Collections.emptyList();
-        return DataUtils.createMockDataPoints(deviceId);
+        return Collections.emptyList();
+        //return DataUtils.createMockDataPoints(deviceId);
     }
 
     /**
@@ -301,7 +301,7 @@ public class ConfigSyncService {
      */
     public ConnectionInfo loadConnectionConfig(String deviceId) {
         try {
-            String url = ruoyiUrl + "/api/collector/config/connection/" + deviceId;
+            String url = runUrl + "/iot/collector/config/connection/" + deviceId;
 
             ResponseEntity<ConnectionInfo> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(), ConnectionInfo.class);
@@ -330,7 +330,7 @@ public class ConfigSyncService {
      */
     private Map<String, Long> getRemoteConfigVersions() {
         try {
-            String url = ruoyiUrl + "/api/collector/config/versions?serviceId=" + serviceId;
+            String url = runUrl + "/api/collector/config/versions?serviceId=" + serviceId;
 
             ResponseEntity<Map<String, Long>> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(),
