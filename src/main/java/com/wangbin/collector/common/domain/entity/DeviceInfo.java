@@ -18,9 +18,6 @@ public class DeviceInfo {
 
     // ==================== 基本信息 ====================
 
-    /** 主键ID */
-    private Long id;
-
     /** 设备唯一标识 */
     @JsonProperty("id")
     private String deviceId;
