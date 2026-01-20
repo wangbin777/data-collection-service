@@ -1,6 +1,7 @@
 package com.wangbin.collector.core.connection.adapter;
 
 import com.alibaba.fastjson2.JSON;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
 import lombok.extern.slf4j.Slf4j;
@@ -34,8 +35,8 @@ public class HttpConnectionAdapter extends AbstractConnectionAdapter<HttpClient>
     private Map<String, String> customHeaders;
     private ExecutorService executorService;
 
-    public HttpConnectionAdapter(DeviceInfo deviceInfo) {
-        super(deviceInfo);
+    public HttpConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection config) {
+        super(deviceInfo, config);
         initialize();
     }
 

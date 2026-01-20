@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
@@ -61,8 +62,8 @@ public class MqttConnectionAdapter extends AbstractConnectionAdapter<Object>
     private String clientId;
     private boolean useMqttV5;
 
-    public MqttConnectionAdapter(DeviceInfo deviceInfo) {
-        super(deviceInfo);
+    public MqttConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection config) {
+        super(deviceInfo, config);
         initialize();
     }
 

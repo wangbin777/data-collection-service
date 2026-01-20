@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
 import io.netty.bootstrap.Bootstrap;
@@ -29,8 +30,8 @@ public class TcpConnectionAdapter extends AbstractConnectionAdapter<Channel> {
     private EventLoopGroup workerGroup;
     private TcpClientHandler clientHandler;
 
-    public TcpConnectionAdapter(DeviceInfo deviceInfo) {
-        super(deviceInfo);
+    public TcpConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection config) {
+        super(deviceInfo, config);
         initialize();
     }
 

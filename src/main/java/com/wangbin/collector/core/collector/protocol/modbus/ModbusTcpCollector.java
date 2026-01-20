@@ -53,7 +53,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             throw new IllegalStateException("Modbus TCP连接适配器类型不匹配");
         }
         this.connectionAdapter = modbusAdapter;
-        DeviceConnection connectionConfig = deviceInfo.getConnectionConfig();
+        DeviceConnection connectionConfig = getCurrentConnectionConfig();
         this.timeout = connectionConfig != null && connectionConfig.getReadTimeout() != null
                 ? connectionConfig.getReadTimeout()
                 : connectionConfig != null ? connectionConfig.getTimeout() : null;
@@ -541,7 +541,8 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     }
 
     private Integer getConfiguredSlaveId() {
-        return deviceInfo.getConnectionConfig().getSlaveId();
+        DeviceConnection connection = getCurrentConnectionConfig();
+        return connection != null ? connection.getSlaveId() : null;
     }
 
     private void processWriteBatch(BatchKey key,

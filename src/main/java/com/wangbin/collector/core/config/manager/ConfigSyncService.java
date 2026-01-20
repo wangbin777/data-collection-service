@@ -3,8 +3,8 @@ package com.wangbin.collector.core.config.manager;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wangbin.collector.common.domain.entity.ApiResponse;
-import com.wangbin.collector.common.domain.entity.ConnectionInfo;
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
 import jakarta.annotation.PostConstruct;
@@ -12,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -37,7 +36,7 @@ public class ConfigSyncService {
     /**
      * RuoYi管理平台地址
      */
-    @Value("${collector.config.yun-url:http://localhost:8080}")
+    @Value("${collector.config.yun-url:http://localhost:8080/admin-api}")
     private String runUrl;
 
     @Value("${collector.config.tenant-id:1}")
@@ -186,7 +185,7 @@ public class ConfigSyncService {
      */
     public List<DeviceInfo> loadAllDevices() {
         try {
-            String url = runUrl + "/admin-api/iot/collector/config/devices?serviceId=" + serviceId;
+            String url = runUrl + "/iot/collector/config/devices?serviceId=" + serviceId;
 
             ResponseEntity<ApiResponse<List<DeviceInfo>>> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(), new ParameterizedTypeReference<>() {
@@ -249,7 +248,7 @@ public class ConfigSyncService {
      */
     public DeviceInfo loadDevice(String deviceId) {
         try {
-            String url = runUrl + "/admin-api/iot/collector/config/device/" + deviceId;
+            String url = runUrl + "/iot/collector/config/device/" + deviceId;
 
             ResponseEntity<DeviceInfo> response = restTemplate.exchange(
                     url, HttpMethod.GET, createAuthRequest(), DeviceInfo.class);
@@ -279,11 +278,12 @@ public class ConfigSyncService {
         try {
             String url = runUrl + "/iot/collector/config/points/" + deviceId;
 
-            ResponseEntity<DataPoint[]> response = restTemplate.exchange(
-                    url, HttpMethod.GET, createAuthRequest(), DataPoint[].class);
+            ResponseEntity<ApiResponse<List<DataPoint>>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, createAuthRequest(), new ParameterizedTypeReference<>() {
+                    });
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                List<DataPoint> points = Arrays.asList(response.getBody());
+                List<DataPoint> points =  response.getBody().getData();
                 pointConfigs.put(deviceId, points);
                 log.debug("成功加载设备 {} 的数据点配置，共 {} 个点", deviceId, points.size());
                 return points;
@@ -304,16 +304,17 @@ public class ConfigSyncService {
      * @param deviceId 设备ID
      * @return 连接信息，加载失败返回null
      */
-    public ConnectionInfo loadConnectionConfig(String deviceId) {
+    public DeviceConnection loadConnectionConfig(String deviceId) {
         try {
             String url = runUrl + "/iot/collector/config/connection/" + deviceId;
 
-            ResponseEntity<ConnectionInfo> response = restTemplate.exchange(
-                    url, HttpMethod.GET, createAuthRequest(), ConnectionInfo.class);
+            ResponseEntity<ApiResponse<DeviceConnection>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, createAuthRequest(), new ParameterizedTypeReference<>() {
+                    });
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 log.debug("成功加载连接配置: {}", deviceId);
-                return response.getBody();
+                return Objects.requireNonNull(response.getBody()).getData();
             } else {
                 log.warn("加载连接配置失败: {}，HTTP状态码: {}", deviceId, response.getStatusCode());
             }
@@ -321,9 +322,7 @@ public class ConfigSyncService {
             log.error("加载连接配置失败: {}", deviceId, e);
         }
 
-        //return null;
-        // 返回模拟数据
-        return DataUtils.createMockConnectionInfo(deviceId);
+        return null;
     }
 
 

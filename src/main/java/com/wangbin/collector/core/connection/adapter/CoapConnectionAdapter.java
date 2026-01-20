@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
 import com.wangbin.collector.core.connection.dispatch.OverflowStrategy;
@@ -23,8 +24,8 @@ public class CoapConnectionAdapter extends AbstractConnectionAdapter<CoapClient>
     private String baseUri;
     private MessageBatchDispatcher<CoapRequest<?>> dispatcher;
 
-    public CoapConnectionAdapter(DeviceInfo deviceInfo) {
-        super(deviceInfo);
+    public CoapConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection config) {
+        super(deviceInfo, config);
     }
 
     @Override

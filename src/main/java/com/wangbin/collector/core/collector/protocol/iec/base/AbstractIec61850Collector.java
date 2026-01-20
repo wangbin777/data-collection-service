@@ -40,7 +40,7 @@ public abstract class AbstractIec61850Collector extends BaseCollector {
 
         this.host = deviceInfo.getIpAddress();
         this.port = deviceInfo.getPort() != null ? deviceInfo.getPort() : 102;
-        DeviceConnection connectionConfig = deviceInfo.getConnectionConfig();
+        DeviceConnection connectionConfig = requireConnectionConfig();
         this.timeout = connectionConfig.getTimeout();
     }
 

@@ -46,12 +46,12 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
     protected int version = SnmpConstants.version2c;
     protected String versionText = "2c";
 
-    protected void initSnmpConfig(DeviceInfo deviceInfo) {
+    protected DeviceConnection initSnmpConfig(DeviceInfo deviceInfo) {
         this.snmpConfig = collectorProperties != null
                 ? collectorProperties.getSnmp()
                 : new CollectorProperties.SnmpConfig();
 
-        DeviceConnection connection = ensureConnectionConfig();
+        DeviceConnection connection = requireConnectionConfig();
 
         host = connection.getHost();
         connection.setHost(host);
@@ -87,10 +87,11 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
             default:
                 version = SnmpConstants.version2c;
         }
+        return connection;
     }
 
-    protected void initSnmpConnection() throws Exception {
-        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo);
+    protected void initSnmpConnection(DeviceConnection connectionConfig) throws Exception {
+        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo, connectionConfig);
         connectionManager.connect(deviceInfo.getDeviceId());
         if (!(adapter instanceof SnmpConnectionAdapter snmpAdapter)) {
             throw new IllegalStateException("SNMP连接适配器类型不匹配");
@@ -244,13 +245,6 @@ public abstract class AbstractSnmpCollector extends BaseCollector {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
-    }
-
-    private DeviceConnection ensureConnectionConfig() {
-        if (deviceInfo.getConnectionConfig() == null) {
-            deviceInfo.setConnectionConfig(new DeviceConnection());
-        }
-        return deviceInfo.getConnectionConfig();
     }
 
     private String firstNonBlank(String... values) {

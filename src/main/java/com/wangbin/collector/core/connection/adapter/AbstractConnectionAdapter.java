@@ -39,9 +39,9 @@ public abstract class AbstractConnectionAdapter<C> implements ConnectionAdapter<
     private long currentReconnectDelay;
     private boolean reconnecting = false;
 
-    protected AbstractConnectionAdapter(DeviceInfo deviceInfo) {
+    protected AbstractConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection connectionConfig) {
         this.deviceInfo = deviceInfo;
-        DeviceConnection source = deviceInfo != null ? deviceInfo.getConnectionConfig() : null;
+        DeviceConnection source = connectionConfig;
         if (source == null) {
             source = new DeviceConnection();
         }

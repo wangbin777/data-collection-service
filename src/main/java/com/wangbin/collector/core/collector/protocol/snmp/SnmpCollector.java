@@ -1,6 +1,7 @@
 package com.wangbin.collector.core.collector.protocol.snmp;
 
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.core.collector.protocol.snmp.base.AbstractSnmpCollector;
 import com.wangbin.collector.core.collector.protocol.snmp.domain.SnmpAddress;
 import com.wangbin.collector.core.collector.protocol.snmp.domain.SnmpDataType;
@@ -36,8 +37,8 @@ public class SnmpCollector extends AbstractSnmpCollector {
 
     @Override
     protected void doConnect() throws Exception {
-        initSnmpConfig(deviceInfo);
-        initSnmpConnection();
+        DeviceConnection connectionConfig = initSnmpConfig(deviceInfo);
+        initSnmpConnection(connectionConfig);
     }
 
     @Override

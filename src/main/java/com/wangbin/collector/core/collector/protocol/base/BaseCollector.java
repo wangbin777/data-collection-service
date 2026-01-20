@@ -2,10 +2,13 @@ package com.wangbin.collector.core.collector.protocol.base;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.DataQuality;
 import com.wangbin.collector.common.exception.CollectorException;
 import com.wangbin.collector.core.config.CollectorProperties;
+import com.wangbin.collector.core.config.manager.ConfigManager;
+import com.wangbin.collector.core.config.model.DeviceContext;
 import com.wangbin.collector.core.connection.manager.ConnectionManager;
 import com.wangbin.collector.core.processor.DataQualityProcessor;
 import com.wangbin.collector.core.processor.ProcessContext;
@@ -36,6 +39,9 @@ public abstract class BaseCollector implements ProtocolCollector {
 
     @Autowired
     protected ConnectionManager connectionManager;
+
+    @Autowired
+    protected ConfigManager configManager;
 
     @Autowired
     protected DataQualityProcessor dataQualityProcessor;
@@ -754,5 +760,31 @@ public abstract class BaseCollector implements ProtocolCollector {
         String deviceId = deviceInfo != null ? deviceInfo.getDeviceId() : null;
         String pointId = point != null ? point.getPointId() : null;
         exceptionMonitorService.record(throwable, deviceId, pointId);
+    }
+
+    protected DeviceContext getDeviceContextSnapshot() {
+        if (configManager == null || deviceInfo == null) {
+            return null;
+        }
+        return configManager.getDeviceContext(deviceInfo.getDeviceId());
+    }
+
+    protected DeviceConnection getConnectionConfigSnapshot() {
+        DeviceContext context = getDeviceContextSnapshot();
+        return context != null ? context.copyConnectionConfig() : null;
+    }
+
+    protected DeviceConnection getCurrentConnectionConfig() {
+        DeviceContext context = getDeviceContextSnapshot();
+        return context != null ? context.getConnectionConfig() : null;
+    }
+
+    protected DeviceConnection requireConnectionConfig() {
+        DeviceConnection connection = getConnectionConfigSnapshot();
+        if (connection == null) {
+            throw new IllegalStateException("连接配置不存在: " +
+                    (deviceInfo != null ? deviceInfo.getDeviceId() : "UNKNOWN"));
+        }
+        return connection;
     }
 }

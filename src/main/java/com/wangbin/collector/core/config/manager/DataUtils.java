@@ -1,7 +1,8 @@
 package com.wangbin.collector.core.config.manager;
 
-import com.wangbin.collector.common.domain.entity.ConnectionInfo;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.utils.JsonDataPointLoader;
 import lombok.extern.slf4j.Slf4j;
 
@@ -70,8 +71,8 @@ public class DataUtils {
      * 创建模拟连接信息
      * 根据设备ID生成对应的连接配�?
      */
-    public static ConnectionInfo createMockConnectionInfo(String deviceId) {
-        ConnectionInfo connection = new ConnectionInfo();
+    public static DeviceConnection createMockDeviceConnection(String deviceId) {
+        DeviceConnection connection = new DeviceConnection();
         Date now = new Date();
 
         // 基础信息
@@ -119,11 +120,11 @@ public class DataUtils {
     /**
      * 设置PLC（Modbus TCP）连接配�?
      */
-    public static void setupPLCConnection(ConnectionInfo connection) {
+    public static void setupPLCConnection(DeviceConnection connection) {
         connection.setDeviceName("西门子S7-1200 PLC");
         connection.setConnectionType("TCP");
         connection.setProtocolType("MODBUS_TCP");
-        connection.setRemoteAddress("192.168.1.100");
+        /*connection.setRemoteAddress("192.168.1.100");
         connection.setRemotePort(502);
         connection.setLocalAddress("192.168.1.10");
         connection.setLocalPort(52000);
@@ -135,7 +136,7 @@ public class DataUtils {
         params.put("retries", 3);
         params.put("byteOrder", "ABCD");
         params.put("unitId", 1);
-        connection.setConnectionParams(params);
+        connection.setConnectionParams(params);*/
 
         // 连接统计
         setupConnectionStats(connection);
@@ -144,11 +145,11 @@ public class DataUtils {
     /**
      * 设置OPC UA连接配置
      */
-    public static void setupOPCUaConnection(ConnectionInfo connection) {
+    public static void setupOPCUaConnection(DeviceConnection connection) {
         connection.setDeviceName("中控DCS系统");
         connection.setConnectionType("TCP");
         connection.setProtocolType("OPC_UA");
-        connection.setRemoteAddress("192.168.1.101");
+        /*connection.setRemoteAddress("192.168.1.101");
         connection.setRemotePort(4840);
 
         Map<String, Object> params = new HashMap<>();
@@ -159,7 +160,7 @@ public class DataUtils {
         params.put("requestTimeout", 5000);
         params.put("username", "admin");
         params.put("password", "123456");
-        connection.setConnectionParams(params);
+        connection.setConnectionParams(params);*/
 
         setupConnectionStats(connection);
     }
@@ -167,11 +168,11 @@ public class DataUtils {
     /**
      * 设置SNMP连接配置
      */
-    public static void setupSNMPConnection(ConnectionInfo connection) {
+    public static void setupSNMPConnection(DeviceConnection connection) {
         connection.setDeviceName("华为交换�?");
         connection.setConnectionType("UDP");
         connection.setProtocolType("SNMP");
-        connection.setRemoteAddress("192.168.1.102");
+        /*connection.setRemoteAddress("192.168.1.102");
         connection.setRemotePort(161);
         connection.setLocalPort(162);
 
@@ -181,7 +182,7 @@ public class DataUtils {
         params.put("timeout", 5000);
         params.put("retries", 2);
         params.put("maxRepetitions", 10);
-        connection.setConnectionParams(params);
+        connection.setConnectionParams(params);*/
 
         setupConnectionStats(connection);
     }
@@ -189,11 +190,11 @@ public class DataUtils {
     /**
      * 设置MQTT连接配置
      */
-    public static void setupMQTTConnection(ConnectionInfo connection) {
+    public static void setupMQTTConnection(DeviceConnection connection) {
         connection.setDeviceName("温湿度传感器");
         connection.setConnectionType("TCP");
         connection.setProtocolType("MQTT");
-        connection.setRemoteAddress("192.168.1.103");
+        /*connection.setRemoteAddress("192.168.1.103");
         connection.setRemotePort(1883);
 
         Map<String, Object> params = new HashMap<>();
@@ -205,7 +206,7 @@ public class DataUtils {
         params.put("keepAliveInterval", 60);
         params.put("username", "iot_user");
         params.put("password", "iot_password");
-        connection.setConnectionParams(params);
+        connection.setConnectionParams(params);*/
 
         setupConnectionStats(connection);
     }
@@ -213,18 +214,18 @@ public class DataUtils {
     /**
      * 设置测试连接配置
      */
-    public static void setupTestConnection(ConnectionInfo connection) {
+    public static void setupTestConnection(DeviceConnection connection) {
         connection.setDeviceName("测试设备");
         connection.setConnectionType("TCP");
         connection.setProtocolType("MODBUS_TCP");
-        connection.setRemoteAddress("192.168.1.199");
+        /*connection.setRemoteAddress("192.168.1.199");
         connection.setRemotePort(502);
 
         Map<String, Object> params = new HashMap<>();
         params.put("slaveId", 2);
         params.put("timeout", 3000);
         params.put("retries", 2);
-        connection.setConnectionParams(params);
+        connection.setConnectionParams(params);*/
 
         // 测试设备设置为断开状�?
         connection.setStatus("DISCONNECTED");
@@ -238,17 +239,17 @@ public class DataUtils {
     /**
      * 设置默认连接配置
      */
-    public static void setupDefaultConnection(ConnectionInfo connection, String deviceId) {
+    public static void setupDefaultConnection(DeviceConnection connection, String deviceId) {
         connection.setDeviceName("未知设备-" + deviceId);
         connection.setConnectionType("TCP");
         connection.setProtocolType("MODBUS_TCP");
-        connection.setRemoteAddress("192.168.1.200");
+        /*connection.setRemoteAddress("192.168.1.200");
         connection.setRemotePort(502);
 
         Map<String, Object> params = new HashMap<>();
         params.put("slaveId", 1);
         params.put("timeout", 3000);
-        connection.setConnectionParams(params);
+        connection.setConnectionParams(params);*/
 
         setupConnectionStats(connection);
     }
@@ -256,8 +257,8 @@ public class DataUtils {
     /**
      * 设置连接统计信息
      */
-    public static void setupConnectionStats(ConnectionInfo connection) {
-        ConnectionInfo.ConnectionStats stats = new ConnectionInfo.ConnectionStats();
+    public static void setupConnectionStats(DeviceConnection connection) {
+        DeviceConnection.ConnectionStats stats = new DeviceConnection.ConnectionStats();
 
         // 模拟一些统计数�?
         Random random = new Random();

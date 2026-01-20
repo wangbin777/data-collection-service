@@ -65,7 +65,7 @@ collector:
     collect-timeout-ms: 800
 
   config:
-    yun-url: http://localhost:48080
+    yun-url: http://localhost:48080/admin-api
     sync-interval: 30000
     service-id: collector-1
     tenant-id: 1

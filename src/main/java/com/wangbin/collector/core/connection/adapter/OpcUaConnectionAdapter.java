@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.exception.CollectorException;
 import lombok.extern.slf4j.Slf4j;
@@ -36,8 +37,8 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
     private String securityPolicy;
     private MessageSecurityMode securityMode;
 
-    public OpcUaConnectionAdapter(DeviceInfo deviceInfo) {
-        super(deviceInfo);
+    public OpcUaConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection config) {
+        super(deviceInfo, config);
     }
 
     @Override
@@ -117,8 +118,9 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
             return override;
         }
         if (config.getHost() != null && !config.getHost().isBlank()) {
-            int port = config.getPort() != null && config.getPort() > 0 ? config.getPort() : 4840;
-            return "opc.tcp://" + config.getHost() + ":" + port;
+            /*int port = config.getPort() != null && config.getPort() > 0 ? config.getPort() : 4840;
+            return "opc.tcp://" + config.getHost() + ":" + port;*/
+            return config.getHost();
         }
         throw new IllegalArgumentException("OPC UA endpointUrl is required");
     }

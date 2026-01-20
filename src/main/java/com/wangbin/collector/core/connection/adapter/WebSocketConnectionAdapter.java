@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
 import lombok.extern.slf4j.Slf4j;
@@ -79,8 +80,8 @@ public class WebSocketConnectionAdapter extends AbstractConnectionAdapter<WebSoc
         }
     };
 
-    public WebSocketConnectionAdapter(DeviceInfo deviceInfo) {
-        super(deviceInfo);
+    public WebSocketConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection config) {
+        super(deviceInfo, config);
         initialize();
     }
 

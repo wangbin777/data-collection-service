@@ -6,7 +6,6 @@ import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.protocol.base.BaseCollector;
 import com.wangbin.collector.core.collector.protocol.opc.ua.domain.OpcUaAddress;
 import com.wangbin.collector.core.collector.protocol.opc.ua.util.OpcUaAddressParser;
-import com.wangbin.collector.core.config.CollectorProperties;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
@@ -74,7 +73,7 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
     }
 
     protected void initOpcUaConfig(DeviceInfo deviceInfo) {
-        DeviceConnection connection = ensureConnectionConfig();
+        DeviceConnection connection = requireConnectionConfig();
         endpointUrl = connection.getUrl();
         securityPolicy = connection.getSecurityPolicy();
         username = connection.getUsername();
@@ -163,13 +162,4 @@ public abstract class AbstractOpcUaCollector extends BaseCollector {
                 address.getDeadband()
         );
     }
-
-    private DeviceConnection ensureConnectionConfig() {
-        if (deviceInfo.getConnectionConfig() == null) {
-            deviceInfo.setConnectionConfig(new DeviceConnection());
-        }
-        return deviceInfo.getConnectionConfig();
-    }
-
-
 }

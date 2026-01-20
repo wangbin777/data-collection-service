@@ -101,7 +101,9 @@ public abstract class AbstractModbusCollector extends BaseCollector {
         if (point.getUnitId() != null) {
             return point.getUnitId();
         }
-        return deviceInfo.getConnectionConfig().getSlaveId();
+        DeviceConnection connection = getCurrentConnectionConfig();
+        Integer slaveId = connection != null ? connection.getSlaveId() : null;
+        return slaveId != null ? slaveId : 1;
     }
 
     /**
@@ -110,7 +112,8 @@ public abstract class AbstractModbusCollector extends BaseCollector {
     protected Map<String, Object> getBaseDeviceStatus(String protocolType) {
         Map<String, Object> status = new HashMap<>();
         status.put("protocol", protocolType);
-        Object configuredSlaveId = deviceInfo.getConnectionConfig().getSlaveId();
+        DeviceConnection connection = getCurrentConnectionConfig();
+        Object configuredSlaveId = connection != null ? connection.getSlaveId() : null;
         status.put("slaveId", configuredSlaveId != null ? String.valueOf(configuredSlaveId) : "1");
         status.put("timeout", timeout);
         status.put("clientConnected", isConnected());
@@ -207,10 +210,4 @@ public abstract class AbstractModbusCollector extends BaseCollector {
      */
     public abstract boolean isConnected();
 
-    protected DeviceConnection ensureConnectionConfig() {
-        if (deviceInfo.getConnectionConfig() == null) {
-            deviceInfo.setConnectionConfig(new DeviceConnection());
-        }
-        return deviceInfo.getConnectionConfig();
-    }
 }

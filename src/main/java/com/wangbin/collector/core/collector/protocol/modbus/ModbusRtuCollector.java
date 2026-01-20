@@ -62,7 +62,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
     @Override
     protected void doConnect() throws Exception {
         log.info("开始建立 Modbus RTU 连接: {}", deviceInfo.getDeviceId());
-        DeviceConnection connectionConfig = deviceInfo.getConnectionConfig();
+        DeviceConnection connectionConfig = requireConnectionConfig();
 
         interFrameDelay = connectionConfig.getInterFrameDelay();
         serialPort = connectionConfig.getSerialPort();

@@ -37,8 +37,8 @@ public class HttpCollector extends BaseCollector {
             throw new IllegalStateException("连接管理器未初始化");
         }
         
-        prepareConnectionConfig();
-        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo);
+        DeviceConnection connectionConfig = prepareConnectionConfig();
+        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo, connectionConfig);
         connectionManager.connect(deviceInfo.getDeviceId());
         
         if (!(adapter instanceof HttpConnectionAdapter httpAdapter)) {
@@ -163,8 +163,8 @@ public class HttpCollector extends BaseCollector {
         }
     }
     
-    private void prepareConnectionConfig() {
-        DeviceConnection config = ensureConnectionConfig();
+    private DeviceConnection prepareConnectionConfig() {
+        DeviceConnection config = requireConnectionConfig();
         if (config.getConnectionType() == null || config.getConnectionType().isBlank()) {
             config.setConnectionType("HTTP");
         }
@@ -177,20 +177,6 @@ public class HttpCollector extends BaseCollector {
         if (config.getUrl() == null && config.getHost() != null && config.getPort() != null) {
             config.setUrl("http://" + config.getHost() + ":" + config.getPort());
         }
-        /*Map<String, Object> props = config.getProperties();
-        if (props == null) {
-            props = new HashMap<>();
-            config.setProperties(props);
-        }
-        props.putIfAbsent("method", "GET");
-        props.putIfAbsent("sendEndpoint", "/api/data");
-        props.putIfAbsent("receiveEndpoint", "/api/receive");*/
-    }
-
-    private DeviceConnection ensureConnectionConfig() {
-        if (deviceInfo.getConnectionConfig() == null) {
-            deviceInfo.setConnectionConfig(new DeviceConnection());
-        }
-        return deviceInfo.getConnectionConfig();
+        return config;
     }
 }

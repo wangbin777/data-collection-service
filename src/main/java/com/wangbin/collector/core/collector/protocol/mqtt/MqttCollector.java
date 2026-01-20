@@ -215,11 +215,14 @@ public class MqttCollector extends BaseCollector {
 
 
     private Map<String, Object> getConnectionProperties() {
-        return deviceInfo.getConnectionConfig().getExtraParams();
+        DeviceConnection connection = getCurrentConnectionConfig();
+        Map<String, Object> props = connection != null ? connection.getExtJson() : null;
+        return props != null ? props : Collections.emptyMap();
     }
 
     private String getBrokerUrl() {
-        String url = deviceInfo.getConnectionConfig().getUrl();
+        DeviceConnection connection = getCurrentConnectionConfig();
+        String url = connection != null ? connection.getUrl() : null;
         if (url == null || url.isBlank()) {
             url = toString(getConnectionProperties().get("brokerUrl"), "N/A");
         }
@@ -227,7 +230,8 @@ public class MqttCollector extends BaseCollector {
     }
 
     private String getClientId() {
-        String clientId = deviceInfo.getConnectionConfig().getClientId();
+        DeviceConnection connection = getCurrentConnectionConfig();
+        String clientId = connection != null ? connection.getClientId() : null;
         if (clientId == null || clientId.isBlank()) {
             clientId = toString(getConnectionProperties().get("clientId"), deviceInfo.getDeviceId() + "_mqtt");
         }

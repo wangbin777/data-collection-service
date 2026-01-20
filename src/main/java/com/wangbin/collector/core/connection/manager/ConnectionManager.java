@@ -4,6 +4,8 @@ import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.common.domain.enums.ConnectionStatus;
 import com.wangbin.collector.common.exception.CollectorException;
+import com.wangbin.collector.core.config.manager.ConfigManager;
+import com.wangbin.collector.core.config.model.DeviceContext;
 import com.wangbin.collector.core.connection.adapter.ConnectionAdapter;
 import com.wangbin.collector.core.connection.factory.ConnectionFactory;
 import com.wangbin.collector.core.connection.model.ConnectionMetrics;
@@ -31,6 +33,9 @@ public class ConnectionManager {
 
     @Autowired
     private ConnectionFactory connectionFactory;
+
+    @Autowired
+    private ConfigManager configManager;
 
     @Autowired(required = false)
     private ExceptionMonitorService exceptionMonitorService;
@@ -67,6 +72,10 @@ public class ConnectionManager {
      * 创建连接
      */
     public ConnectionAdapter createConnection(DeviceInfo deviceInfo) {
+        return createConnection(deviceInfo, null);
+    }
+
+    public ConnectionAdapter createConnection(DeviceInfo deviceInfo, DeviceConnection overrideConfig) {
         if (deviceInfo == null || deviceInfo.getDeviceId() == null || deviceInfo.getDeviceId().isBlank()) {
             throw new CollectorException("设备信息无效", null, null);
         }
@@ -84,9 +93,13 @@ public class ConnectionManager {
             }
 
             try {
-                validateGroupCapacity(deviceInfo);
+                DeviceConnection connectionConfig = overrideConfig != null ? overrideConfig : resolveConnectionConfig(deviceId);
+                if (connectionConfig == null) {
+                    throw new CollectorException("连接配置不存在", deviceId, null);
+                }
+                validateGroupCapacity(deviceInfo, connectionConfig);
                 // 创建新连接
-                ConnectionAdapter connection = connectionFactory.createConnection(deviceInfo);
+                ConnectionAdapter connection = connectionFactory.createConnection(deviceInfo, connectionConfig);
                 connections.put(deviceId, connection);
 
                 // 添加到分组
@@ -417,7 +430,7 @@ public class ConnectionManager {
                 .add(deviceInfo.getDeviceId());
     }
 
-    private void validateGroupCapacity(DeviceInfo deviceInfo) {
+    private void validateGroupCapacity(DeviceInfo deviceInfo, DeviceConnection config) {
         if (deviceInfo == null) {
             return;
         }
@@ -425,7 +438,6 @@ public class ConnectionManager {
         if (groupId == null || groupId.isEmpty()) {
             return;
         }
-        DeviceConnection config = deviceInfo.getConnectionConfig();
         int maxConnections = Optional.ofNullable(config != null ? config.getMaxGroupConnections() : null).orElse(0);
         if (maxConnections <= 0) {
             return;
@@ -434,6 +446,14 @@ public class ConnectionManager {
         if (members != null && members.size() >= maxConnections) {
             throw new CollectorException("分组连接数已达到限制", deviceInfo.getDeviceId(), null);
         }
+    }
+
+    private DeviceConnection resolveConnectionConfig(String deviceId) {
+        if (configManager == null || deviceId == null) {
+            return null;
+        }
+        DeviceContext context = configManager.getDeviceContext(deviceId);
+        return context != null ? context.copyConnectionConfig() : null;
     }
 
     /**

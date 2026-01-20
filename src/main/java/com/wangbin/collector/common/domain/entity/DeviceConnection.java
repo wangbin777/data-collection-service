@@ -1,20 +1,34 @@
 package com.wangbin.collector.common.domain.entity;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.wangbin.collector.common.enums.Parity;
 import lombok.Data;
 
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * �豸���Ӳ���
+ * 设备连接信息
  */
 @Data
 public class DeviceConnection {
 
     private Long id;
+    private String connectionId;
+    private String deviceId;
+    private String deviceName;
     private String connectionType;
+    private String protocolType;
     private String host;
     private Integer port;
     private String url;
@@ -39,6 +53,7 @@ public class DeviceConnection {
     private String authToken;
     //安全策略
     private String securityPolicy;
+    @JsonDeserialize(using = StringStringMapDeserializer.class)
     private Map<String, String> authParams;
 
     private Boolean sslEnabled = false;
@@ -59,7 +74,23 @@ public class DeviceConnection {
     private Long dispatchFlushInterval = 0L;
     private String overflowStrategy = "BLOCK";
 
-    private Map<String, Object> extraParams;
+    private String status;
+    private Date connectTime;
+    private Date disconnectTime;
+    private Long duration;
+    private Integer retryCount;
+    private String lastError;
+    @JsonDeserialize(using = StringObjectMapDeserializer.class)
+    private Map<String, Object> stats;
+    private Date lastHeartbeatTime;
+    private Date lastDataTime;
+    private Date createTime;
+    private Date updateTime;
+
+    private ConnectionStats connectionStats = new ConnectionStats();
+
+    @JsonDeserialize(using = StringObjectMapDeserializer.class)
+    private Map<String, Object> extJson;
 
     private Integer slaveId = 1;
     private String serialPort = "COM4";
@@ -71,12 +102,11 @@ public class DeviceConnection {
     private String flowControl; // 流量控制 协调发送方和接收方之间的数据传输速率
 
     private Integer retries;
-    private String extJson;
     private String remark;
 
     public Object getProperty(String key) {
-        if (extraParams != null && key != null) {
-            return extraParams.get(key);
+        if (extJson != null && key != null) {
+            return extJson.get(key);
         }
         if (authParams != null && key != null) {
             return authParams.get(key);
@@ -221,6 +251,119 @@ public class DeviceConnection {
                 return serialPort != null && !serialPort.isEmpty();
             default:
                 return true;
+        }
+    }
+
+    public boolean isActive() {
+        return "CONNECTED".equals(status) && lastHeartbeatTime != null
+                && (System.currentTimeMillis() - lastHeartbeatTime.getTime()) < 120000;
+    }
+
+    public void updateHeartbeat() {
+        lastHeartbeatTime = new Date();
+    }
+
+    public void updateDataTime() {
+        lastDataTime = new Date();
+    }
+
+    public void calculateDuration() {
+        if (connectTime != null) {
+            Date endTime = disconnectTime != null ? disconnectTime : new Date();
+            duration = endTime.getTime() - connectTime.getTime();
+        }
+    }
+
+    @Data
+    public static class ConnectionStats {
+        private Long totalBytesSent = 0L;
+        private Long totalBytesReceived = 0L;
+        private Long totalMessagesSent = 0L;
+        private Long totalMessagesReceived = 0L;
+        private Long totalErrors = 0L;
+        private Double averageResponseTime;
+        private Double maxResponseTime;
+        private Date lastResponseTime;
+
+        public void addBytesSent(long bytes) {
+            totalBytesSent += bytes;
+        }
+
+        public void addBytesReceived(long bytes) {
+            totalBytesReceived += bytes;
+        }
+
+        public void addMessageSent() {
+            totalMessagesSent++;
+        }
+
+        public void addMessageReceived() {
+            totalMessagesReceived++;
+        }
+
+        public void addError() {
+            totalErrors++;
+        }
+
+        public double getSuccessRate() {
+            long total = totalMessagesSent + totalMessagesReceived;
+            if (total == 0) {
+                return 0.0;
+            }
+            return (total - totalErrors) * 100.0 / total;
+        }
+    }
+
+    /**
+     * 支持 JSON 对象或 JSON 字符串的 Map 反序列化
+     */
+    public static class StringObjectMapDeserializer extends JsonDeserializer<Map<String, Object>> {
+        private static final ObjectMapper MAPPER = new ObjectMapper();
+        private static final TypeReference<LinkedHashMap<String, Object>> TYPE =
+                new TypeReference<LinkedHashMap<String, Object>>() {};
+
+        @Override
+        public Map<String, Object> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            JsonNode node = p.getCodec().readTree(p);
+            if (node == null || node.isNull()) {
+                return new LinkedHashMap<>();
+            }
+            if (node.isObject()) {
+                return MAPPER.convertValue(node, TYPE);
+            }
+            if (node.isTextual()) {
+                String text = node.asText();
+                if (text == null || text.trim().isEmpty()) {
+                    return new LinkedHashMap<>();
+                }
+                return MAPPER.readValue(text, TYPE);
+            }
+            return new LinkedHashMap<>();
+        }
+    }
+
+    public static class StringStringMapDeserializer extends JsonDeserializer<Map<String, String>> {
+        private static final ObjectMapper MAPPER = new ObjectMapper();
+        private static final TypeReference<LinkedHashMap<String, String>> TYPE =
+                new TypeReference<LinkedHashMap<String, String>>() {};
+
+        @Override
+        public Map<String, String> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            JsonNode node = p.getCodec().readTree(p);
+            if (node == null || node.isNull()) {
+                return new LinkedHashMap<>();
+            }
+            if (node.isObject()) {
+                return MAPPER.convertValue(node, TYPE);
+            }
+            if (node.isTextual()) {
+                String text = node.asText();
+                if (text == null || text.trim().isEmpty()) {
+                    return new LinkedHashMap<>();
+                }
+                return MAPPER.readValue(text, TYPE);
+            }
+            return new LinkedHashMap<>();
         }
     }
 }

@@ -7,6 +7,7 @@ import com.wangbin.collector.core.collector.statistics.CollectionStatistics;
 import com.wangbin.collector.core.config.CollectorProperties;
 import com.wangbin.collector.core.config.manager.ConfigManager;
 import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
+import com.wangbin.collector.core.config.model.DeviceContext;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -786,8 +787,10 @@ public class CollectionScheduler {
 
         for (String deviceId : deviceIds) {
             try {
-                DeviceInfo deviceInfo = configManager.getDevice(deviceId);
-                if (deviceInfo != null && deviceInfo.getConnectionConfig() != null ) {
+                DeviceContext context = configManager.getDeviceContext(deviceId);
+                if (context != null
+                        && context.getDeviceInfo() != null
+                        && context.getConnectionConfig() != null) {
                     if (startDevice(deviceId)) {
                         successCount++;
                     } else {

@@ -54,9 +54,6 @@ public class DeviceInfo {
     /** 设备端口号 */
     private Integer port;
 
-    /** 连接相关配置，JSON格式 */
-    private DeviceConnection connectionConfig;
-
     /** 认证相关配置，JSON格式 */
     private Map<String, Object> authConfig;
 
@@ -344,7 +341,6 @@ public class DeviceInfo {
                 !Objects.equals(this.port, other.port) ||
                 !Objects.equals(this.protocolType, other.protocolType) ||
                 !Objects.equals(this.connectionType, other.connectionType) ||
-                !Objects.equals(this.connectionConfig, other.connectionConfig) ||
                 !Objects.equals(this.collectionInterval, other.collectionInterval) ||
                 !Objects.equals(this.reportInterval, other.reportInterval);
     }

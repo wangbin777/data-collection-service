@@ -1,10 +1,11 @@
 package com.wangbin.collector.core.config.manager;
 
-import com.wangbin.collector.common.domain.entity.ConnectionInfo;
 import com.wangbin.collector.common.domain.entity.DataPoint;
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.collector.scheduler.AdaptiveCollectionUtil;
 import com.wangbin.collector.core.config.model.ConfigUpdateEvent;
+import com.wangbin.collector.core.config.model.DeviceContext;
 import com.wangbin.collector.core.report.validator.FieldUniquenessValidator;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -43,7 +44,12 @@ public class ConfigManager {
     /**
      * 连接配置缓存 key:设备ID value:连接信息
      */
-    private final Map<String, ConnectionInfo> connectionCache = new ConcurrentHashMap<>();
+    private final Map<String, DeviceConnection> connectionCache = new ConcurrentHashMap<>();
+
+    /**
+     * 聚合配置缓存 key:设备ID value:DeviceContext
+     */
+    private final Map<String, DeviceContext> deviceContextCache = new ConcurrentHashMap<>();
 
     /**
      * 读写锁，保证配置读写的线程安全
@@ -78,6 +84,11 @@ public class ConfigManager {
             lock.writeLock().lock();
             log.info("开始加载所有配置...");
 
+            deviceCache.clear();
+            pointCache.clear();
+            connectionCache.clear();
+            deviceContextCache.clear();
+
             // 从远程服务加载配置
             List<DeviceInfo> devices = configSyncService.loadAllDevices();
             for (DeviceInfo device : devices) {
@@ -94,15 +105,18 @@ public class ConfigManager {
                 try {
                     // 加载设备的数据点
                     List<DataPoint> points = configSyncService.loadDataPoints(deviceId);
-                    pointCache.put(deviceId, points != null ? points : new ArrayList<>());
+                    List<DataPoint> safePoints = points != null ? new ArrayList<>(points) : new ArrayList<>();
+                    pointCache.put(deviceId, safePoints);
 
                     // 加载连接配置
-                    ConnectionInfo connection = configSyncService.loadConnectionConfig(deviceId);
+                    DeviceConnection connection = configSyncService.loadConnectionConfig(deviceId);
                     if (connection != null) {
                         connectionCache.put(deviceId, connection);
+                    } else {
+                        connectionCache.remove(deviceId);
                     }
 
-                    // 加载采集配置
+                    deviceContextCache.put(deviceId, DeviceContext.of(device, connection, safePoints));
 
                     log.debug("设备配置加载成功: {} - {}", deviceId, device.getDeviceName());
                 } catch (Exception e) {
@@ -144,6 +158,37 @@ public class ConfigManager {
         lock.readLock().lock();
         try {
             return new ArrayList<>(deviceCache.values());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * 获取设备上下文
+     *
+     * @param deviceId 设备ID
+     * @return 设备上下文，不存在返回null
+     */
+    public DeviceContext getDeviceContext(String deviceId) {
+        Objects.requireNonNull(deviceId, "设备ID不能为空");
+
+        lock.readLock().lock();
+        try {
+            return deviceContextCache.get(deviceId);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
+     * 获取全部设备上下文
+     *
+     * @return 上下文列表
+     */
+    public List<DeviceContext> getAllDeviceContexts() {
+        lock.readLock().lock();
+        try {
+            return new ArrayList<>(deviceContextCache.values());
         } finally {
             lock.readLock().unlock();
         }
@@ -239,7 +284,7 @@ public class ConfigManager {
      * @param deviceId 设备ID
      * @return 连接信息，不存在返回null
      */
-    public ConnectionInfo getConnectionConfig(String deviceId) {
+    public DeviceConnection getConnectionConfig(String deviceId) {
         Objects.requireNonNull(deviceId, "设备ID不能为空");
 
         lock.readLock().lock();
@@ -278,6 +323,7 @@ public class ConfigManager {
 
             // 更新缓存
             deviceCache.put(deviceId, device);
+            rebuildDeviceContext(deviceId);
 
             // 发布配置更新事件
             ConfigUpdateEvent event = ConfigUpdateEvent.builder()
@@ -323,6 +369,7 @@ public class ConfigManager {
             }
 
             pointCache.put(deviceId, new ArrayList<>(points));
+            rebuildDeviceContext(deviceId);
 
             // 发布配置更新事件
             ConfigUpdateEvent event = ConfigUpdateEvent.builder()
@@ -388,6 +435,7 @@ public class ConfigManager {
                     .mapToInt(List::size)
                     .sum());
             stats.put("connectionCount", connectionCache.size());
+            stats.put("contextCount", deviceContextCache.size());
             return stats;
         } finally {
             lock.readLock().unlock();
@@ -403,6 +451,7 @@ public class ConfigManager {
             deviceCache.clear();
             pointCache.clear();
             connectionCache.clear();
+            deviceContextCache.clear();
             log.info("所有配置缓存已清空");
         } finally {
             lock.writeLock().unlock();
@@ -421,7 +470,6 @@ public class ConfigManager {
                 !Objects.equals(oldDevice.getPort(), newDevice.getPort()) ||
                 !Objects.equals(oldDevice.getProtocolType(), newDevice.getProtocolType()) ||
                 !Objects.equals(oldDevice.getConnectionType(), newDevice.getConnectionType()) ||
-                !Objects.equals(oldDevice.getConnectionConfig(), newDevice.getConnectionConfig()) ||
                 !Objects.equals(oldDevice.getAuthConfig(), newDevice.getAuthConfig());
     }
 
@@ -509,9 +557,29 @@ public class ConfigManager {
             deviceCache.remove(deviceId);
             pointCache.remove(deviceId);
             connectionCache.remove(deviceId);
+            deviceContextCache.remove(deviceId);
         } finally {
             lock.writeLock().unlock();
         }
+    }
+
+    /**
+     * 刷新设备上下文
+     *
+     * @param deviceId 设备ID
+     */
+    private void rebuildDeviceContext(String deviceId) {
+        if (deviceId == null) {
+            return;
+        }
+        DeviceInfo device = deviceCache.get(deviceId);
+        if (device == null) {
+            deviceContextCache.remove(deviceId);
+            return;
+        }
+        List<DataPoint> points = pointCache.getOrDefault(deviceId, Collections.emptyList());
+        DeviceConnection connection = connectionCache.get(deviceId);
+        deviceContextCache.put(deviceId, DeviceContext.of(device, connection, points));
     }
 
     /**
@@ -548,11 +616,12 @@ public class ConfigManager {
         }
 
         try {
-            ConnectionInfo connection = configSyncService.loadConnectionConfig(deviceId);
+            DeviceConnection connection = configSyncService.loadConnectionConfig(deviceId);
             if (connection != null) {
                 lock.writeLock().lock();
                 try {
                     connectionCache.put(deviceId, connection);
+                    rebuildDeviceContext(deviceId);
                     log.info("连接配置重载成功: {}", deviceId);
                 } finally {
                     lock.writeLock().unlock();

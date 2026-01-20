@@ -14,32 +14,32 @@ import org.springframework.stereotype.Component;
 @Component
 public class ConnectionFactory {
 
-    public ConnectionAdapter<?> createConnection(DeviceInfo deviceInfo) {
+    public ConnectionAdapter<?> createConnection(DeviceInfo deviceInfo, DeviceConnection connectionConfig) {
         if (deviceInfo == null || deviceInfo.getDeviceId() == null || deviceInfo.getDeviceId().isBlank()) {
             throw new IllegalArgumentException("设备信息无效");
         }
-        ensureConnectionConfig(deviceInfo);
-        String connectionType = resolveConnectionType(deviceInfo);
+        DeviceConnection cfg = connectionConfig != null ? connectionConfig : new DeviceConnection();
+        String connectionType = resolveConnectionType(deviceInfo, cfg);
         switch (connectionType) {
             case "TCP":
-                return createTcpConnection(deviceInfo);
+                return createTcpConnection(deviceInfo, cfg);
             case "HTTP":
-                return createHttpConnection(deviceInfo);
+                return createHttpConnection(deviceInfo, cfg);
             case "MQTT":
-                return createMqttConnection(deviceInfo);
+                return createMqttConnection(deviceInfo, cfg);
             case "WEBSOCKET":
-                return createWebSocketConnection(deviceInfo);
+                return createWebSocketConnection(deviceInfo, cfg);
             case "COAP":
-                return createCoapConnection(deviceInfo);
+                return createCoapConnection(deviceInfo, cfg);
             case "MODBUS_TCP":
-                return createModbusTcpConnection(deviceInfo);
+                return createModbusTcpConnection(deviceInfo, cfg);
             case "MODBUS_RTU":
-                return createModbusRtuConnection(deviceInfo);
+                return createModbusRtuConnection(deviceInfo, cfg);
             case "SNMP":
-                return createSnmpConnection(deviceInfo);
+                return createSnmpConnection(deviceInfo, cfg);
             case "OPC_UA":
             case "OPCUA":
-                return createOpcUaConnection(deviceInfo);
+                return createOpcUaConnection(deviceInfo, cfg);
             default:
                 throw new CollectorException(
                         String.format("不支持的连接类型: %s", connectionType),
@@ -48,17 +48,10 @@ public class ConnectionFactory {
         }
     }
 
-    private void ensureConnectionConfig(DeviceInfo deviceInfo) {
-        if (deviceInfo.getConnectionConfig() == null) {
-            deviceInfo.setConnectionConfig(new DeviceConnection());
-        }
-    }
-
-    private String resolveConnectionType(DeviceInfo deviceInfo) {
+    private String resolveConnectionType(DeviceInfo deviceInfo, DeviceConnection cfg) {
         if (deviceInfo.getConnectionType() != null && !deviceInfo.getConnectionType().isBlank()) {
             return normalize(deviceInfo.getConnectionType());
         }
-        DeviceConnection cfg = deviceInfo.getConnectionConfig();
         if (cfg != null && cfg.getConnectionType() != null && !cfg.getConnectionType().isBlank()) {
             return normalize(cfg.getConnectionType());
         }
@@ -72,81 +65,81 @@ public class ConnectionFactory {
         return type.toUpperCase().replace("-", "_");
     }
 
-    private ConnectionAdapter<?> createTcpConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createTcpConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new TcpConnectionAdapter(deviceInfo);
+            return new TcpConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建TCP连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建TCP连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createHttpConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createHttpConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new HttpConnectionAdapter(deviceInfo);
+            return new HttpConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建HTTP连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建HTTP连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createMqttConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createMqttConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new MqttConnectionAdapter(deviceInfo);
+            return new MqttConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建MQTT连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建MQTT连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createWebSocketConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createWebSocketConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new WebSocketConnectionAdapter(deviceInfo);
+            return new WebSocketConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建WebSocket连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建WebSocket连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createCoapConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createCoapConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new CoapConnectionAdapter(deviceInfo);
+            return new CoapConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建CoAP连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建CoAP连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createModbusTcpConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createModbusTcpConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new ModbusTcpConnectionAdapter(deviceInfo);
+            return new ModbusTcpConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建Modbus TCP连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建Modbus TCP连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createModbusRtuConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createModbusRtuConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new ModbusRtuConnectionAdapter(deviceInfo);
+            return new ModbusRtuConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建Modbus RTU连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建Modbus RTU连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createSnmpConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createSnmpConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new SnmpConnectionAdapter(deviceInfo);
+            return new SnmpConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建SNMP连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建SNMP连接失败", deviceInfo.getDeviceId(), null);
         }
     }
 
-    private ConnectionAdapter<?> createOpcUaConnection(DeviceInfo deviceInfo) {
+    private ConnectionAdapter<?> createOpcUaConnection(DeviceInfo deviceInfo, DeviceConnection cfg) {
         try {
-            return new OpcUaConnectionAdapter(deviceInfo);
+            return new OpcUaConnectionAdapter(deviceInfo, cfg);
         } catch (Exception e) {
             log.error("创建OPC UA连接失败: {}", deviceInfo.getDeviceId(), e);
             throw new CollectorException("创建OPC UA连接失败", deviceInfo.getDeviceId(), null);

@@ -1,5 +1,6 @@
 package com.wangbin.collector.core.connection.adapter;
 
+import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
 import com.wangbin.collector.core.connection.dispatch.OverflowStrategy;
@@ -30,8 +31,8 @@ public class SnmpConnectionAdapter extends AbstractConnectionAdapter<Snmp> {
     private Target<UdpAddress> target;
     private MessageBatchDispatcher<SnmpOperation<?>> dispatcher;
 
-    public SnmpConnectionAdapter(DeviceInfo deviceInfo) {
-        super(deviceInfo);
+    public SnmpConnectionAdapter(DeviceInfo deviceInfo, DeviceConnection config) {
+        super(deviceInfo, config);
     }
 
     @Override

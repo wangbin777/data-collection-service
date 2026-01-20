@@ -1,10 +1,17 @@
 package com.wangbin.collector.common.domain.entity;
 
+import com.alibaba.fastjson2.JSON;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import lombok.Data;
 
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.io.IOException;
+import java.util.*;
 
 /**
  * 数据点实体
@@ -155,7 +162,7 @@ public class DataPoint {
      * 告警规则配置（JSON格式）
      * 示例: {"threshold": 100, "comparison": ">", "duration": 60}
      */
-    private List<AlarmRule> alarmRule;
+    private String alarmRule;
 
     /**
      * 数据点状态
@@ -188,11 +195,12 @@ public class DataPoint {
     private String remark;
 
     /**
-     * 附加配置信息（JSON格式）
+     * 附加配置信息（JSON对象或JSON字符串）
      * 用于存储协议特定配置或其他扩展配置
      * 示例: {"byteOrder": "BIG_ENDIAN", "registerType": "HOLDING_REGISTER"}
      */
-    private Map<String, Object> additionalConfig;
+    @JsonDeserialize(using = AdditionalConfigDeserializer.class)
+    private Map<String, Object> additionalConfig = new LinkedHashMap<>();
     
     /**
      * 自适应采集相关字段
@@ -243,6 +251,14 @@ public class DataPoint {
      */
     private long lastAdjustTime;
 
+
+
+    public List<AlarmRule> getAlarmRule() {
+        if (this.alarmRule == null || this.alarmRule.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        return JSON.parseArray(this.alarmRule, AlarmRule.class);
+    }
     /**
      * 获取实际值（考虑缩放因子和偏移量）
      * @param rawValue 原始采集值
@@ -336,6 +352,13 @@ public class DataPoint {
         return status != null && status == 1;
     }
 
+    public Map<String, Object> getAdditionalConfig() {
+        if (this.additionalConfig == null || this.additionalConfig.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        return new LinkedHashMap<>(this.additionalConfig);
+    }
+
     /**
      * 获取附加配置值
      * @param key 配置键
@@ -344,11 +367,11 @@ public class DataPoint {
      */
     @SuppressWarnings("unchecked")
     public <T> T getAdditionalConfig(String key, T defaultValue) {
-        if (additionalConfig == null) {
+        if (additionalConfig == null || additionalConfig.isEmpty()) {
             return defaultValue;
         }
-        T value = (T) additionalConfig.get(key);
-        return value != null ? value : defaultValue;
+        Object value = additionalConfig.get(key);
+        return value != null ? (T) value : defaultValue;
     }
 
     /**
@@ -358,11 +381,10 @@ public class DataPoint {
      */
     @SuppressWarnings("unchecked")
     public <T> T getAdditionalConfig(String key) {
-        if (additionalConfig == null) {
+        if (additionalConfig == null || additionalConfig.isEmpty()) {
             return null;
         }
-        T value = (T) additionalConfig.get(key);
-        return value;
+        return (T) additionalConfig.get(key);
     }
 
     /**
@@ -389,7 +411,11 @@ public class DataPoint {
     private transient int parsedAdditionalConfigHash;
 
     public void setAdditionalConfig(Map<String, Object> additionalConfig) {
-        this.additionalConfig = additionalConfig;
+        if (additionalConfig == null) {
+            this.additionalConfig = new LinkedHashMap<>();
+        } else {
+            this.additionalConfig = new LinkedHashMap<>(additionalConfig);
+        }
         resetReportConfig();
     }
 
@@ -555,4 +581,32 @@ public class DataPoint {
         );
     }
 
+    /**
+     * 支持服务返回对象或JSON字符串的反序列化器
+     */
+    public static class AdditionalConfigDeserializer extends JsonDeserializer<Map<String, Object>> {
+
+        private static final ObjectMapper MAPPER = new ObjectMapper();
+        private static final TypeReference<LinkedHashMap<String, Object>> TYPE =
+                new TypeReference<LinkedHashMap<String, Object>>() {};
+
+        @Override
+        public Map<String, Object> deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            JsonNode node = p.getCodec().readTree(p);
+            if (node == null || node.isNull()) {
+                return new LinkedHashMap<>();
+            }
+            if (node.isObject()) {
+                return MAPPER.convertValue(node, TYPE);
+            }
+            if (node.isTextual()) {
+                String text = node.asText();
+                if (text == null || text.trim().isEmpty()) {
+                    return new LinkedHashMap<>();
+                }
+                return MAPPER.readValue(text, TYPE);
+            }
+            return new LinkedHashMap<>();
+        }
+    }
 }

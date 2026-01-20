@@ -41,8 +41,8 @@ public class WebSocketCollector extends BaseCollector {
             throw new IllegalStateException("连接管理器未初始化");
         }
         
-        prepareConnectionConfig();
-        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo);
+        DeviceConnection connectionConfig = prepareConnectionConfig();
+        ConnectionAdapter adapter = connectionManager.createConnection(deviceInfo, connectionConfig);
         connectionManager.connect(deviceInfo.getDeviceId());
         
         if (!(adapter instanceof WebSocketConnectionAdapter webSocketAdapter)) {
@@ -190,35 +190,29 @@ public class WebSocketCollector extends BaseCollector {
     /**
      * 构建连接配置
      */
-     private void prepareConnectionConfig() {
-         DeviceConnection config = ensureConnectionConfig();
-         if (config.getConnectionType() == null || config.getConnectionType().isBlank()) {
-             config.setConnectionType("WEBSOCKET");
-         }
-         if (config.getHost() == null && deviceInfo.getIpAddress() != null) {
-             config.setHost(deviceInfo.getIpAddress());
+    private DeviceConnection prepareConnectionConfig() {
+        DeviceConnection config = requireConnectionConfig();
+        if (config.getConnectionType() == null || config.getConnectionType().isBlank()) {
+            config.setConnectionType("WEBSOCKET");
+        }
+        if (config.getHost() == null && deviceInfo.getIpAddress() != null) {
+            config.setHost(deviceInfo.getIpAddress());
          }
          if (config.getPort() == null && deviceInfo.getPort() != null) {
              config.setPort(deviceInfo.getPort());
          }
-         if (config.getUrl() == null && config.getHost() != null && config.getPort() != null) {
-             String scheme = Boolean.TRUE.equals(config.getSslEnabled()) ? "wss" : "ws";
-             config.setUrl(scheme + "://" + config.getHost() + ":" + config.getPort());
-         }
-         /*Map<String, Object> props = config.getProperties();
-         if (props == null) {
-             props = new HashMap<>();
-             config.setProperties(props);
-         }
-         props.putIfAbsent("path", "/ws");*/
-     }
-
-     private DeviceConnection ensureConnectionConfig() {
-         if (deviceInfo.getConnectionConfig() == null) {
-             deviceInfo.setConnectionConfig(new DeviceConnection());
-         }
-         return deviceInfo.getConnectionConfig();
-     }
+        if (config.getUrl() == null && config.getHost() != null && config.getPort() != null) {
+            String scheme = Boolean.TRUE.equals(config.getSslEnabled()) ? "wss" : "ws";
+            config.setUrl(scheme + "://" + config.getHost() + ":" + config.getPort());
+        }
+        /*Map<String, Object> props = config.getProperties();
+        if (props == null) {
+            props = new HashMap<>();
+            config.setProperties(props);
+        }
+        props.putIfAbsent("path", "/ws");*/
+        return config;
+    }
     
     /**
      * 构建订阅消息
