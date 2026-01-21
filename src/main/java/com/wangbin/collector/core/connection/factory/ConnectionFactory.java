@@ -20,32 +20,21 @@ public class ConnectionFactory {
         }
         DeviceConnection cfg = connectionConfig != null ? connectionConfig : new DeviceConnection();
         String connectionType = resolveConnectionType(deviceInfo, cfg);
-        switch (connectionType) {
-            case "TCP":
-                return createTcpConnection(deviceInfo, cfg);
-            case "HTTP":
-                return createHttpConnection(deviceInfo, cfg);
-            case "MQTT":
-                return createMqttConnection(deviceInfo, cfg);
-            case "WEBSOCKET":
-                return createWebSocketConnection(deviceInfo, cfg);
-            case "COAP":
-                return createCoapConnection(deviceInfo, cfg);
-            case "MODBUS_TCP":
-                return createModbusTcpConnection(deviceInfo, cfg);
-            case "MODBUS_RTU":
-                return createModbusRtuConnection(deviceInfo, cfg);
-            case "SNMP":
-                return createSnmpConnection(deviceInfo, cfg);
-            case "OPC_UA":
-            case "OPCUA":
-                return createOpcUaConnection(deviceInfo, cfg);
-            default:
-                throw new CollectorException(
-                        String.format("不支持的连接类型: %s", connectionType),
-                        deviceInfo.getDeviceId(), null
-                );
-        }
+        return switch (connectionType) {
+            case "TCP" -> createTcpConnection(deviceInfo, cfg);
+            case "HTTP" -> createHttpConnection(deviceInfo, cfg);
+            case "MQTT" -> createMqttConnection(deviceInfo, cfg);
+            case "WEBSOCKET" -> createWebSocketConnection(deviceInfo, cfg);
+            case "COAP" -> createCoapConnection(deviceInfo, cfg);
+            case "MODBUS_TCP" -> createModbusTcpConnection(deviceInfo, cfg);
+            case "MODBUS_RTU" -> createModbusRtuConnection(deviceInfo, cfg);
+            case "SNMP" -> createSnmpConnection(deviceInfo, cfg);
+            case "OPC_UA", "OPCUA" -> createOpcUaConnection(deviceInfo, cfg);
+            default -> throw new CollectorException(
+                    String.format("不支持的连接类型: %s", connectionType),
+                    deviceInfo.getDeviceId(), null
+            );
+        };
     }
 
     private String resolveConnectionType(DeviceInfo deviceInfo, DeviceConnection cfg) {

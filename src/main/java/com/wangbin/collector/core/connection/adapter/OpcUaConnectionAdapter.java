@@ -118,9 +118,8 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
             return override;
         }
         if (config.getHost() != null && !config.getHost().isBlank()) {
-            /*int port = config.getPort() != null && config.getPort() > 0 ? config.getPort() : 4840;
-            return "opc.tcp://" + config.getHost() + ":" + port;*/
-            return config.getHost();
+            int port = config.getPort() != null && config.getPort() > 0 ? config.getPort() : 4840;
+            return "opc.tcp://" + config.getHost() + ":" + port;
         }
         throw new IllegalArgumentException("OPC UA endpointUrl is required");
     }
