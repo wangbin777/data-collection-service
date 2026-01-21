@@ -102,7 +102,7 @@ public abstract class AbstractModbusCollector extends BaseCollector {
             return point.getUnitId();
         }
         DeviceConnection connection = getCurrentConnectionConfig();
-        Integer slaveId = connection != null ? connection.getSlaveId() : null;
+        Integer slaveId = connection != null ? (Integer) connection.getProperty("slaveId") : null;
         return slaveId != null ? slaveId : 1;
     }
 
@@ -113,7 +113,7 @@ public abstract class AbstractModbusCollector extends BaseCollector {
         Map<String, Object> status = new HashMap<>();
         status.put("protocol", protocolType);
         DeviceConnection connection = getCurrentConnectionConfig();
-        Object configuredSlaveId = connection != null ? connection.getSlaveId() : null;
+        Object configuredSlaveId = connection != null ? (Integer) connection.getProperty("slaveId") : null;
         status.put("slaveId", configuredSlaveId != null ? String.valueOf(configuredSlaveId) : "1");
         status.put("timeout", timeout);
         status.put("clientConnected", isConnected());

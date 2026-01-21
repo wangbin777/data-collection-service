@@ -44,7 +44,6 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
     private int timeout;
     private ByteOrder byteOrder = ByteOrder.BIG_ENDIAN;
     private int interFrameDelay = 5; // 帧间延时(ms)
-    private final Semaphore tcpSemaphore = new Semaphore(1);
     private final Map<RegisterType, Map<Integer, DataPoint>> registerCache = new ConcurrentHashMap<>();
     private static final int MAX_WRITE_REGISTERS = 123;
     private static final int MAX_WRITE_COILS = 1968;
@@ -64,14 +63,14 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         log.info("开始建立 Modbus RTU 连接: {}", deviceInfo.getDeviceId());
         DeviceConnection connectionConfig = requireConnectionConfig();
 
-        interFrameDelay = connectionConfig.getInterFrameDelay();
-        serialPort = connectionConfig.getSerialPort();
-        baudRate = connectionConfig.getBaudRate();
-        dataBits = connectionConfig.getDataBits();
-        stopBits = connectionConfig.getStopBits();
-        parity = Parity.fromName(connectionConfig.getParity()).getValue();
+        interFrameDelay = connectionConfig.getInt("interFrameDelay",5);
+        serialPort = connectionConfig.getString("serialPort","COM1");
+        baudRate = connectionConfig.getInt("baudRate",9600);
+        dataBits = connectionConfig.getInt("dataBits",8);
+        stopBits = connectionConfig.getInt("stopBits",1);
+        parity = Parity.fromName(connectionConfig.getString("parity",Parity.none.name())).getValue();
         timeout = connectionConfig.getReadTimeout();
-        slaveId = connectionConfig.getSlaveId();
+        slaveId = connectionConfig.getInt("slaveId",1);
 
         var transport = SerialPortClientTransport.create(cfg -> {
             cfg.setSerialPort(serialPort);
@@ -84,8 +83,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         client = ModbusRtuClient.create(transport);
         client.connect();
 
-        log.info(
-                "Modbus RTU 连接成功: {} baud={} dataBits={} stopBits={} parity={}",
+        log.info("Modbus RTU 连接成功: {} baud={} dataBits={} stopBits={} parity={}",
                 serialPort, baudRate, dataBits, stopBits, parity
         );
     }

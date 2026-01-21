@@ -24,18 +24,25 @@ import java.util.Map;
 public class DeviceConnection {
 
     private Long id;
-    private String connectionId;
-    private String deviceId;
-    private String deviceName;
     private String connectionType;
-    private String protocolType;
+    private String connectionKey;
     private String host;
     private Integer port;
     private String url;
-
     private Integer connectTimeout = 5000;
     private Integer readTimeout = 30000;
     private Integer writeTimeout = 30000;
+    private Integer retries;
+    @JsonDeserialize(using = StringObjectMapDeserializer.class)
+    private Map<String, Object> extJson;
+    private String remark;
+
+    private String connectionId;
+    private String deviceId;
+    private String deviceName;
+
+
+
     private Integer timeout = 30000;
     private Integer heartbeatInterval = 30000;
     private Integer heartbeatTimeout = 90000;
@@ -78,7 +85,6 @@ public class DeviceConnection {
     private Date connectTime;
     private Date disconnectTime;
     private Long duration;
-    private Integer retryCount;
     private String lastError;
     @JsonDeserialize(using = StringObjectMapDeserializer.class)
     private Map<String, Object> stats;
@@ -89,20 +95,6 @@ public class DeviceConnection {
 
     private ConnectionStats connectionStats = new ConnectionStats();
 
-    @JsonDeserialize(using = StringObjectMapDeserializer.class)
-    private Map<String, Object> extJson;
-
-    private Integer slaveId = 1;
-    private String serialPort = "COM4";
-    private Integer baudRate = 9600;
-    private Integer dataBits = 8;
-    private Integer stopBits = 1;
-    private String parity = Parity.none.name(); //enum Parity
-    private Integer interFrameDelay = 5;//帧间延迟 两个数据帧（或数据包）之间强制插入的最小时间间隔
-    private String flowControl; // 流量控制 协调发送方和接收方之间的数据传输速率
-
-    private Integer retries;
-    private String remark;
 
     public Object getProperty(String key) {
         if (extJson != null && key != null) {
@@ -247,8 +239,6 @@ public class DeviceConnection {
             case "WEBSOCKET":
                 return url != null && !url.isEmpty();
             case "MODBUS_RTU":
-            case "SERIAL":
-                return serialPort != null && !serialPort.isEmpty();
             default:
                 return true;
         }

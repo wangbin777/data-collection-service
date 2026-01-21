@@ -542,7 +542,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
     private Integer getConfiguredSlaveId() {
         DeviceConnection connection = getCurrentConnectionConfig();
-        return connection != null ? connection.getSlaveId() : null;
+        return connection != null ? (Integer) connection.getProperty("slaveId") : null;
     }
 
     private void processWriteBatch(BatchKey key,

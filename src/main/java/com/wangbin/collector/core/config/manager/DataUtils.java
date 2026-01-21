@@ -106,7 +106,6 @@ public class DataUtils {
         connection.setConnectTime(new Date(now.getTime() - 3600000)); // 1小时前连�?
         connection.setLastHeartbeatTime(now);
         connection.setLastDataTime(now);
-        connection.setRetryCount(0);
         connection.calculateDuration();
 
         // 系统时间
@@ -123,7 +122,6 @@ public class DataUtils {
     public static void setupPLCConnection(DeviceConnection connection) {
         connection.setDeviceName("西门子S7-1200 PLC");
         connection.setConnectionType("TCP");
-        connection.setProtocolType("MODBUS_TCP");
         /*connection.setRemoteAddress("192.168.1.100");
         connection.setRemotePort(502);
         connection.setLocalAddress("192.168.1.10");
@@ -148,7 +146,6 @@ public class DataUtils {
     public static void setupOPCUaConnection(DeviceConnection connection) {
         connection.setDeviceName("中控DCS系统");
         connection.setConnectionType("TCP");
-        connection.setProtocolType("OPC_UA");
         /*connection.setRemoteAddress("192.168.1.101");
         connection.setRemotePort(4840);
 
@@ -171,7 +168,6 @@ public class DataUtils {
     public static void setupSNMPConnection(DeviceConnection connection) {
         connection.setDeviceName("华为交换�?");
         connection.setConnectionType("UDP");
-        connection.setProtocolType("SNMP");
         /*connection.setRemoteAddress("192.168.1.102");
         connection.setRemotePort(161);
         connection.setLocalPort(162);
@@ -193,7 +189,6 @@ public class DataUtils {
     public static void setupMQTTConnection(DeviceConnection connection) {
         connection.setDeviceName("温湿度传感器");
         connection.setConnectionType("TCP");
-        connection.setProtocolType("MQTT");
         /*connection.setRemoteAddress("192.168.1.103");
         connection.setRemotePort(1883);
 
@@ -217,7 +212,6 @@ public class DataUtils {
     public static void setupTestConnection(DeviceConnection connection) {
         connection.setDeviceName("测试设备");
         connection.setConnectionType("TCP");
-        connection.setProtocolType("MODBUS_TCP");
         /*connection.setRemoteAddress("192.168.1.199");
         connection.setRemotePort(502);
 
@@ -231,7 +225,6 @@ public class DataUtils {
         connection.setStatus("DISCONNECTED");
         connection.setDisconnectTime(new Date());
         connection.setLastError("连接超时");
-        connection.setRetryCount(2);
 
         setupConnectionStats(connection);
     }
@@ -242,7 +235,6 @@ public class DataUtils {
     public static void setupDefaultConnection(DeviceConnection connection, String deviceId) {
         connection.setDeviceName("未知设备-" + deviceId);
         connection.setConnectionType("TCP");
-        connection.setProtocolType("MODBUS_TCP");
         /*connection.setRemoteAddress("192.168.1.200");
         connection.setRemotePort(502);
 

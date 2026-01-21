@@ -63,7 +63,7 @@ public abstract class AbstractIce104Collector extends BaseCollector {
         this.port = deviceInfo.getPort() != null ? deviceInfo.getPort() : 2404;
 
         DeviceConnection connectionConfig = requireConnectionConfig();
-        this.commonAddress = connectionConfig.getSlaveId();
+        this.commonAddress = (Integer) connectionConfig.getProperty("slaveId");
         this.timeout = connectionConfig.getTimeout();
         this.timeTag = true;
         if (interrogationScheduler == null) {
