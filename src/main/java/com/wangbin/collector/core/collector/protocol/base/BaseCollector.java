@@ -65,7 +65,7 @@ public abstract class BaseCollector implements ProtocolCollector {
     protected AtomicLong totalReadTime = new AtomicLong(0);
     protected AtomicLong totalWriteTime = new AtomicLong(0);
 
-    // æè¿ä¸æ¬¡å¤çç»æ?
+    // 处理结果
     protected final Map<String, ProcessResult> lastProcessResults = new ConcurrentHashMap<>();
 
     // 订阅的点位

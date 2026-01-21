@@ -52,11 +52,11 @@ public class ConnectionFactory {
         if (deviceInfo.getConnectionType() != null && !deviceInfo.getConnectionType().isBlank()) {
             return normalize(deviceInfo.getConnectionType());
         }
-        if (cfg != null && cfg.getConnectionType() != null && !cfg.getConnectionType().isBlank()) {
-            return normalize(cfg.getConnectionType());
-        }
         if (deviceInfo.getProtocolType() != null && !deviceInfo.getProtocolType().isBlank()) {
             return normalize(deviceInfo.getProtocolType());
+        }
+        if (cfg != null && cfg.getConnectionType() != null && !cfg.getConnectionType().isBlank()) {
+            return normalize(cfg.getConnectionType());
         }
         return "TCP";
     }
