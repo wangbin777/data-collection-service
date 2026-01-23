@@ -11,6 +11,18 @@ import java.util.*;
 
 public class ModbusUtils {
 
+
+
+    public static ByteOrder parseByteOrder(String orderStr) {
+        return switch (orderStr) {
+            case "BIG_ENDIAN" -> ByteOrder.BIG_ENDIAN;
+            case "LITTLE_ENDIAN" -> ByteOrder.LITTLE_ENDIAN;
+            default -> ByteOrder.BIG_ENDIAN;  // Modbus默认大端序
+        };
+    }
+
+
+
     // =============== 线圈/离散输入解析 ===============
 
     /**

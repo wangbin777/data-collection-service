@@ -4,6 +4,7 @@ import com.digitalpetri.modbus.pdu.*;
 import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DataPoint;
 import com.wangbin.collector.common.enums.DataType;
+import com.wangbin.collector.common.enums.Parity;
 import com.wangbin.collector.core.collector.protocol.modbus.base.AbstractModbusCollector;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusAddress;
 import com.wangbin.collector.core.collector.protocol.modbus.domain.ModbusRequestBuilder;
@@ -18,6 +19,7 @@ import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.nio.ByteOrder;
 import java.util.*;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
@@ -30,10 +32,10 @@ import java.util.concurrent.TimeUnit;
 public class ModbusTcpCollector extends AbstractModbusCollector {
 
     private ModbusTcpConnectionAdapter connectionAdapter;
-    private String host;
-    private int port;
     private static final int MAX_WRITE_REGISTERS = 123;
     private static final int MAX_WRITE_COILS = 1968;
+    private ByteOrder byteOrder = ByteOrder.BIG_ENDIAN;
+    private int parity;
     @Override
     public String getCollectorType() {
         return "ModbusTCP";
@@ -54,16 +56,19 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
         this.connectionAdapter = modbusAdapter;
         DeviceConnection connectionConfig = getCurrentConnectionConfig();
-        this.timeout = connectionConfig != null && connectionConfig.getReadTimeout() != null
+        assert connectionConfig != null;
+        this.timeout = connectionConfig.getReadTimeout() != null
                 ? connectionConfig.getReadTimeout()
-                : connectionConfig != null ? connectionConfig.getTimeout() : null;
+                : connectionConfig.getTimeout();
         if (this.timeout <= 0) {
             CollectorProperties.ModbusConfig defaults = collectorProperties != null
                     ? collectorProperties.getModbus()
                     : new CollectorProperties.ModbusConfig();
             this.timeout = defaults.getTimeout();
         }
-        log.info("Modbus TCP连接建立成功: {}:{}", host, port);
+        byteOrder = ModbusUtils.parseByteOrder(connectionConfig.getString("byteOrder","BIG_ENDIAN"));
+        parity = Parity.fromName(connectionConfig.getString("parity",Parity.none.name())).getValue();
+        log.info("Modbus TCP连接建立成功: {}:{}", connectionConfig.getHost(), connectionConfig.getPort());
     }
 
     @Override
@@ -152,68 +157,27 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
         return switch (plan.getRegisterType()) {
 
-            case COIL -> {
-                byte[] coils = executeWithClient(client -> client.readCoilsAsync(
-                                plan.getUnitId(),
-                                new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity()))
-                        .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).coils());
-                yield coils;
-            }
+            case COIL -> executeWithClient(client -> client.readCoilsAsync(
+                            plan.getUnitId(),
+                            new ReadCoilsRequest(plan.getStartAddress(), plan.getQuantity()))
+                    .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).coils());
 
-            case DISCRETE_INPUT -> {
-                byte[] inputs = executeWithClient(client -> client.readDiscreteInputsAsync(
-                                plan.getUnitId(),
-                                new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity()))
-                        .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).inputs());
-                yield inputs;
-            }
+            case DISCRETE_INPUT -> executeWithClient(client -> client.readDiscreteInputsAsync(
+                            plan.getUnitId(),
+                            new ReadDiscreteInputsRequest(plan.getStartAddress(), plan.getQuantity()))
+                    .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).inputs());
 
-            case HOLDING_REGISTER -> {
-                byte[] registers = executeWithClient(client -> client.readHoldingRegistersAsync(
-                                plan.getUnitId(),
-                                new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity()))
-                        .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).registers());
-                yield registers;
-            }
+            case HOLDING_REGISTER -> executeWithClient(client -> client.readHoldingRegistersAsync(
+                            plan.getUnitId(),
+                            new ReadHoldingRegistersRequest(plan.getStartAddress(), plan.getQuantity()))
+                    .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).registers());
 
-            case INPUT_REGISTER -> {
-                byte[] registers = executeWithClient(client -> client.readInputRegistersAsync(
-                                plan.getUnitId(),
-                                new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity()))
-                        .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).registers());
-                yield registers;
-            }
+            case INPUT_REGISTER -> executeWithClient(client -> client.readInputRegistersAsync(
+                            plan.getUnitId(),
+                            new ReadInputRegistersRequest(plan.getStartAddress(), plan.getQuantity()))
+                    .toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS).registers());
         };
     }
-
-    /**
-     * 返回结果
-     * @param response
-     * @return
-     */
-    private byte[] extractRaw(Object response) {
-
-        if (response instanceof ReadCoilsResponse r) {
-            return r.coils();
-        }
-
-        if (response instanceof ReadDiscreteInputsResponse r) {
-            return r.inputs();
-        }
-
-        if (response instanceof ReadHoldingRegistersResponse r) {
-            return r.registers();
-        }
-
-        if (response instanceof ReadInputRegistersResponse r) {
-            return r.registers();
-        }
-
-        throw new IllegalArgumentException(
-                "Unsupported Modbus response type: " + response.getClass()
-        );
-    }
-
 
 
     @Override
@@ -274,10 +238,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     @Override
     protected Map<String, Object> doGetDeviceStatus() {
         Map<String, Object> status = getBaseDeviceStatus("Modbus TCP");
-        status.put("host", host);
-        status.put("port", port);
         status.put("unitIds", collectUnitIds());
-
         // 测试连接
         try {
             boolean connected = testConnection();
@@ -488,8 +449,8 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     private Object executeDiagnostic(int unitId,Map<String, Object> params) {
         Map<String, Object> result = new HashMap<>();
         result.put("protocol", "Modbus TCP");
-        result.put("host", host);
-        result.put("port", port);
+        /*result.put("host", host);
+        result.put("port", port);*/
         result.put("unitId", unitId);
         result.put("timeout", timeout);
         result.put("masterConnected", connectionAdapter != null && connectionAdapter.isConnected());
@@ -687,33 +648,6 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         return connectionAdapter;
     }
 
-
-    private int parseInt(Object value, int defaultValue) {
-        if (value == null) {
-            return defaultValue;
-        }
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        try {
-            return Integer.parseInt(value.toString());
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
-    }
-
-    private String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    private String toString(Object value) {
-        return value != null ? value.toString() : null;
-    }
 
     private boolean asBoolean(Object value) {
         if (value instanceof Boolean b) {

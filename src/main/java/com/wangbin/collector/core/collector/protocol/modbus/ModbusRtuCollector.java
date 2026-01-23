@@ -68,6 +68,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         baudRate = connectionConfig.getInt("baudRate",9600);
         dataBits = connectionConfig.getInt("dataBits",8);
         stopBits = connectionConfig.getInt("stopBits",1);
+        byteOrder = ModbusUtils.parseByteOrder(connectionConfig.getString("byteOrder","BIG_ENDIAN"));
         parity = Parity.fromName(connectionConfig.getString("parity",Parity.none.name())).getValue();
         timeout = connectionConfig.getReadTimeout();
         slaveId = connectionConfig.getInt("slaveId",1);

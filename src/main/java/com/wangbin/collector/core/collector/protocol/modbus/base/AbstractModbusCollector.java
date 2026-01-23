@@ -113,7 +113,10 @@ public abstract class AbstractModbusCollector extends BaseCollector {
         Map<String, Object> status = new HashMap<>();
         status.put("protocol", protocolType);
         DeviceConnection connection = getCurrentConnectionConfig();
-        Object configuredSlaveId = connection != null ? (Integer) connection.getProperty("slaveId") : null;
+        assert connection != null;
+        Object configuredSlaveId = connection.getProperty("slaveId");
+        status.put("host", connection.getHost());
+        status.put("port", connection.getPort());
         status.put("slaveId", configuredSlaveId != null ? String.valueOf(configuredSlaveId) : "1");
         status.put("timeout", timeout);
         status.put("clientConnected", isConnected());
