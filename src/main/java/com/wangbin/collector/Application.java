@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 public class Application {
 
     public static void main(String[] args) {
-        System.out.println("=== 开始启动 Spring Boot 应用 ===");
         try {
             SpringApplication.run(Application.class, args);
             System.out.println("=== Spring Boot 应用启动成功 ===");
