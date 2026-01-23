@@ -1,5 +1,6 @@
 package com.wangbin.collector.common.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationContext;
@@ -29,8 +30,11 @@ public class DeviceConnection {
     private String host;
     private Integer port;
     private String url;
+    @JsonProperty("connectTimeoutMs")
     private Integer connectTimeout = 5000;
+    @JsonProperty("readTimeoutMs")
     private Integer readTimeout = 30000;
+    @JsonProperty("writeTimeoutMs")
     private Integer writeTimeout = 30000;
     private Integer retries;
     @JsonDeserialize(using = StringObjectMapDeserializer.class)

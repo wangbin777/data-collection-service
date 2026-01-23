@@ -110,6 +110,11 @@ public class CollectorFactory {
                 "SNMP",
                 "com.wangbin.collector.core.collector.protocol.snmp.SnmpCollector"));
 
+        // COAP协议
+        registerCollector("COAP", deviceInfo -> instantiateCollector(
+                "COAP",
+                "com.wangbin.collector.core.collector.protocol.coap.CoapCollector"));
+
         // MQTT协议
         registerCollector("MQTT", deviceInfo -> instantiateCollector(
                 "MQTT",
