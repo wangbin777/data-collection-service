@@ -1,7 +1,8 @@
 package com.wangbin.collector.core.collector.protocol.modbus.utils;
 
-import com.wangbin.collector.common.enums.DataType;
 import com.digitalpetri.modbus.Crc16;
+import com.wangbin.collector.common.enums.DataType;
+import com.wangbin.collector.common.enums.Parity;
 
 import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
@@ -21,6 +22,22 @@ public class ModbusUtils {
         };
     }
 
+    /**
+     * 按寄存器粒度应用字节序（每两个字节为一组）
+     */
+    public static byte[] applyByteOrder(byte[] raw, ByteOrder byteOrder) {
+        if (raw == null || raw.length == 0 || byteOrder == null || byteOrder == ByteOrder.BIG_ENDIAN) {
+            return raw;
+        }
+        byte[] reordered = raw.clone();
+        for (int i = 0; i + 1 < reordered.length; i += 2) {
+            byte tmp = reordered[i];
+            reordered[i] = reordered[i + 1];
+            reordered[i + 1] = tmp;
+        }
+        return reordered;
+    }
+
 
 
     // =============== 线圈/离散输入解析 ===============
@@ -29,14 +46,20 @@ public class ModbusUtils {
      * 将Modbus返回的线圈/离散输入字节数组解析为布尔列表
      */
     public static List<Boolean> getCoilValues(byte[] coilBytes, int quantity) {
-        List<Boolean> values = new ArrayList<>(quantity);
+        return getCoilValues(coilBytes, quantity, Parity.none);
+    }
+
+    /**
+     * 解析线圈/离散输入字节数组（携带奇偶校验的场景）
+     */
+    public static List<Boolean> getCoilValues(byte[] coilBytes, int quantity, Parity parity) {
+        List<Boolean> values = new ArrayList<>(Math.max(quantity, 0));
         if (coilBytes == null || quantity <= 0) {
             return values;
         }
 
-        // ✅ 修正：从i=0开始循环
         for (int i = 0; i < quantity; i++) {
-            values.add(parseCoilValue(coilBytes, i));
+            values.add(parseCoilValue(coilBytes, i, parity));
         }
 
         return values;
@@ -53,35 +76,35 @@ public class ModbusUtils {
      * 解析指定位置的线圈值
      */
     public static Boolean getCoilValue(byte[] coilBytes, int quantity) {
+        return getCoilValue(coilBytes, quantity, Parity.none);
+    }
+
+    public static Boolean getCoilValue(byte[] coilBytes, int quantity, Parity parity) {
         if (quantity < 1) {
             return null;
         }
         int index = quantity - 1;
-        if (coilBytes == null || index / 8 >= coilBytes.length) {
-            return null;
-        }
-
-        int byteIndex = index / 8;
-        int bitIndex = index % 8;
-
-        return ((coilBytes[byteIndex] >> bitIndex) & 0x01) == 1;
+        return parseCoilValue(coilBytes, index, parity);
     }
 
     /**
      * 解析单个线圈值（按位索引）
      */
     public static Boolean parseCoilValue(byte[] coilBytes, int bitIndex) {
+        return parseCoilValue(coilBytes, bitIndex, Parity.none);
+    }
+
+    public static Boolean parseCoilValue(byte[] coilBytes, int bitIndex, Parity parity) {
         if (coilBytes == null || coilBytes.length == 0) {
             return null;
         }
 
         int byteIndex = bitIndex / 8;
-        int bitOffset = bitIndex % 8;
-
         if (byteIndex >= coilBytes.length) {
             return null;
         }
 
+        int bitOffset = resolveBitOffset(bitIndex, parity);
         return ((coilBytes[byteIndex] >> bitOffset) & 0x01) == 1;
     }
 
@@ -108,10 +131,28 @@ public class ModbusUtils {
         return convertByteToValue(raw, dataType);
     }
 
+    public static Object parseRegisterValue(byte[] raw, String dataType, ByteOrder byteOrder) {
+        return convertByteToValue(raw, dataType, byteOrder);
+    }
+
     /**
      * 根据数据类型解析字节数组
      */
     public static Object convertByteToValue(byte[] raw, String dataType) {
+        return convertByteToValue(raw, dataType, ByteOrder.BIG_ENDIAN);
+    }
+
+    public static Object convertByteToValue(byte[] raw, String dataType, ByteOrder byteOrder) {
+        if (raw == null || raw.length == 0) {
+            return null;
+        }
+        byte[] working = (byteOrder == null || byteOrder == ByteOrder.BIG_ENDIAN)
+                ? raw
+                : applyByteOrder(raw, byteOrder);
+        return convertByteToValueInternal(working, dataType);
+    }
+
+    private static Object convertByteToValueInternal(byte[] raw, String dataType) {
         if (raw == null || raw.length == 0) {
             return null;
         }
@@ -142,10 +183,10 @@ public class ModbusUtils {
                 case UINT64 -> parseUint64(raw);
                 case BOOLEAN -> parseBoolean(raw);
                 case STRING -> parseString(raw);
-                case DOUBLE -> parseDouble(raw);  // 添加实现
-                case DOUBLE_SWAP -> parseDoubleWordSwap(raw);  // 添加实现
-                case FLOAT64_SWAP -> parseFloat64WordSwap(raw);  // 添加实现
-                case FLOAT64_LITTLE -> parseFloat64LittleEndian(raw);  // 添加实现
+                case DOUBLE -> parseDouble(raw);
+                case DOUBLE_SWAP -> parseDoubleWordSwap(raw);
+                case FLOAT64_SWAP -> parseFloat64WordSwap(raw);
+                case FLOAT64_LITTLE -> parseFloat64LittleEndian(raw);
             };
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("不支持的数据类型: " + dataType, e);
@@ -211,43 +252,25 @@ public class ModbusUtils {
      * @param dataType       数据类型枚举
      */
     public static Object parseValue(byte[] raw, int offsetRegister, DataType dataType) {
+        return parseValue(raw, offsetRegister, dataType, ByteOrder.BIG_ENDIAN);
+    }
+
+    public static Object parseValue(byte[] raw, int offsetRegister, DataType dataType, ByteOrder byteOrder) {
         if (raw == null || raw.length == 0 || dataType == null) {
             return null;
         }
 
         int byteOffset = offsetRegister * 2;
 
-        // 最小长度校验（防越界）
         if (byteOffset + dataType.getMinBytes() > raw.length) {
             return null;
         }
 
-        return switch (dataType) {
-            case INT16 ->
-                    parseInt16(raw, offsetRegister);
-            case UINT16 ->
-                    parseUInt16(raw, offsetRegister);
-            case INT32 ->
-                    parseInt32(raw, offsetRegister, false);
-            case UINT32 ->
-                    parseUInt32(raw, offsetRegister, false);
-            case FLOAT, FLOAT32 ->
-                    parseFloat32(raw, offsetRegister, false);
-            case FLOAT32_SWAP ->
-                    parseFloat32(raw, offsetRegister, true);
-            case FLOAT64 ->
-                    parseFloat64(raw, offsetRegister, false);
-            case INT64 ->
-                    parseInt64(raw);
-            case UINT64 ->
-                    parseUint64(raw);
-            case BOOLEAN ->
-                    parseBoolean(raw);
-            case STRING ->
-                    parseString(raw);
-            default ->
-                    null;
-        };
+        byte[] segment = Arrays.copyOfRange(raw, byteOffset, byteOffset + dataType.getMinBytes());
+        byte[] adjusted = (byteOrder == null || byteOrder == ByteOrder.BIG_ENDIAN)
+                ? segment
+                : applyByteOrder(segment, byteOrder);
+        return convertByteToValueInternal(adjusted, dataType.name());
     }
 
 
@@ -432,6 +455,10 @@ public class ModbusUtils {
      * 构建线圈字节数组
      */
     public static byte[] buildCoilBytes(List<Boolean> values) {
+        return buildCoilBytes(values, Parity.none);
+    }
+
+    public static byte[] buildCoilBytes(List<Boolean> values, Parity parity) {
         if (values == null || values.isEmpty()) {
             return new byte[0];
         }
@@ -441,14 +468,27 @@ public class ModbusUtils {
         byte[] coilBytes = new byte[byteCount];
 
         for (int i = 0; i < quantity; i++) {
-            if (values.get(i)) {
+            if (Boolean.TRUE.equals(values.get(i))) {
                 int byteIndex = i / 8;
-                int bitIndex = i % 8;
-                coilBytes[byteIndex] |= (byte) (1 << bitIndex);
+                int bitOffset = resolveBitOffset(i, parity);
+                coilBytes[byteIndex] |= (byte) (1 << bitOffset);
+            }
+        }
+
+        if (parity != null && parity != Parity.none) {
+            for (int i = 0; i < coilBytes.length; i++) {
+                coilBytes[i] = parity.addParity(coilBytes[i], 7);
             }
         }
 
         return coilBytes;
+    }
+
+    private static int resolveBitOffset(int bitIndex, Parity parity) {
+        if (parity == null || parity == Parity.none) {
+            return bitIndex % 8;
+        }
+        return 7 - (bitIndex % 8);
     }
 
     // =============== RTU专用方法 ===============

@@ -4,6 +4,7 @@ import com.digitalpetri.modbus.client.ModbusRtuClient;
 import com.digitalpetri.modbus.serial.client.SerialPortClientTransport;
 import com.wangbin.collector.common.domain.entity.DeviceConnection;
 import com.wangbin.collector.common.domain.entity.DeviceInfo;
+import com.wangbin.collector.common.enums.Parity;
 import com.wangbin.collector.core.connection.dispatch.MessageBatchDispatcher;
 import com.wangbin.collector.core.connection.dispatch.OverflowStrategy;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +37,7 @@ public class ModbusRtuConnectionAdapter extends AbstractConnectionAdapter {
                     config.getHost() != null ? config.getHost() : "COM1"));
             cfg.setBaudRate(config.getIntConfig("baudRate", 9600));
             cfg.setDataBits(config.getIntConfig("dataBits", 8));
-            cfg.setParity(config.getIntConfig("parity", 0));
+            cfg.setParity(resolveParityValue());
             cfg.setStopBits(config.getIntConfig("stopBits", 1));
         });
         client = ModbusRtuClient.create(transport);
@@ -157,6 +158,26 @@ public class ModbusRtuConnectionAdapter extends AbstractConnectionAdapter {
             dispatcher.stop();
             dispatcher = null;
         }
+    }
+
+    private int resolveParityValue() {
+        String parityText = config.getStringConfig("parity", null);
+        if (parityText != null && !parityText.isBlank()) {
+            try {
+                return Parity.fromName(parityText.toLowerCase()).getValue();
+            } catch (IllegalArgumentException ignore) {
+                log.warn("Unknown parity '{}', fallback to NONE", parityText);
+            }
+        }
+        Integer parityNumber = config.getIntConfig("parity", null);
+        if (parityNumber != null) {
+            try {
+                return Parity.fromValue(parityNumber).getValue();
+            } catch (IllegalArgumentException ignore) {
+                log.warn("Unknown parity value '{}', fallback to NONE", parityNumber);
+            }
+        }
+        return Parity.none.getValue();
     }
 
     private void processOperations(List<ModbusOperation<?>> operations) {

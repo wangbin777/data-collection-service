@@ -35,7 +35,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     private static final int MAX_WRITE_REGISTERS = 123;
     private static final int MAX_WRITE_COILS = 1968;
     private ByteOrder byteOrder = ByteOrder.BIG_ENDIAN;
-    private int parity;
+    private Parity parity = Parity.none;
     @Override
     public String getCollectorType() {
         return "ModbusTCP";
@@ -67,8 +67,13 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             this.timeout = defaults.getTimeout();
         }
         byteOrder = ModbusUtils.parseByteOrder(connectionConfig.getString("byteOrder","BIG_ENDIAN"));
-        parity = Parity.fromName(connectionConfig.getString("parity",Parity.none.name())).getValue();
-        log.info("Modbus TCP连接建立成功: {}:{}", connectionConfig.getHost(), connectionConfig.getPort());
+        String parityName = connectionConfig.getString("parity", Parity.none.name());
+        parity = Parity.fromName(parityName != null ? parityName.toLowerCase() : Parity.none.name());
+        log.info("Modbus TCP连接建立成功: {}:{} byteOrder={} parity={}",
+                connectionConfig.getHost(),
+                connectionConfig.getPort(),
+                byteOrder,
+                parity.name());
     }
 
     @Override
@@ -110,7 +115,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
                 if (plan.getRegisterType() == RegisterType.COIL ||
                         plan.getRegisterType() == RegisterType.DISCRETE_INPUT) {
-                    List<Boolean> boolValues = ModbusUtils.getCoilValues(raw, plan.getQuantity());
+                    List<Boolean> boolValues = ModbusUtils.getCoilValues(raw, plan.getQuantity(), parity);
                     for (PointOffset po : plan.getPointOffsets()) {
                         Boolean value = null;
                         int offset = po.getOffset();
@@ -124,7 +129,8 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                         Object value = ModbusUtils.parseValue(
                                 raw,
                                 po.getOffset(),
-                                DataType.valueOf(po.getDataType())
+                                DataType.valueOf(po.getDataType()),
+                                byteOrder
                         );
                         results.put(po.getPointId(), value);
                     }
@@ -239,6 +245,8 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
     protected Map<String, Object> doGetDeviceStatus() {
         Map<String, Object> status = getBaseDeviceStatus("Modbus TCP");
         status.put("unitIds", collectUnitIds());
+        status.put("byteOrder", byteOrder.toString());
+        status.put("parity", parity.name());
         // 测试连接
         try {
             boolean connected = testConnection();
@@ -270,7 +278,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(unitId,
                     new ReadCoilsRequest(address.getAddress(), 1));
             ReadCoilsResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            return ModbusUtils.parseCoilValue(response.coils(), 0);
+            return ModbusUtils.parseCoilValue(response.coils(), 0, parity);
         });
     }
 
@@ -279,7 +287,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             CompletionStage<ReadDiscreteInputsResponse> future = client.readDiscreteInputsAsync(unitId,
                     new ReadDiscreteInputsRequest(address.getAddress(), 1));
             ReadDiscreteInputsResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            return ModbusUtils.parseCoilValue(response.inputs(), 0);
+            return ModbusUtils.parseCoilValue(response.inputs(), 0, parity);
         });
     }
 
@@ -291,7 +299,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                     new ReadHoldingRegistersRequest(address.getAddress(), registerCount)
             );
             ReadHoldingRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            return ModbusUtils.parseRegisterValue(response.registers(), dataType);
+            return ModbusUtils.parseRegisterValue(response.registers(), dataType, byteOrder);
         });
     }
 
@@ -303,7 +311,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                     new ReadInputRegistersRequest(address.getAddress(), registerCount)
             );
             ReadInputRegistersResponse response = future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
-            return ModbusUtils.parseRegisterValue(response.registers(), dataType);
+            return ModbusUtils.parseRegisterValue(response.registers(), dataType, byteOrder);
         });
     }
 
@@ -320,7 +328,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
 
     private boolean writeHoldingRegister(int unitId,ModbusAddress address, Object value, String dataType) throws Exception {
         int registerCount = DataType.fromString(dataType).getRegisterCount();
-        short[] registers = ModbusUtils.valueToRegisters(value, dataType, java.nio.ByteOrder.BIG_ENDIAN);
+        short[] registers = ModbusUtils.valueToRegisters(value, dataType, byteOrder);
 
         if (registerCount == 1) {
             WriteSingleRegisterRequest request = new WriteSingleRegisterRequest(address.getAddress(), registers[0]);
@@ -364,7 +372,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             if (response != null && response.registers() != null) {
                 byte[] raw = response.registers();
                 java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(raw);
-                buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+                buffer.order(byteOrder);
 
                 for (int i = 0; i < quantity; i++) {
                     values.add(buffer.getShort());
@@ -415,7 +423,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             CompletionStage<ReadCoilsResponse> future = client.readCoilsAsync(unitId, new ReadCoilsRequest(address, quantity));
             return future.toCompletableFuture().get(timeout, TimeUnit.MILLISECONDS);
         });
-        List<Boolean> values = ModbusUtils.getCoilValues(response.coils(), quantity);
+        List<Boolean> values = ModbusUtils.getCoilValues(response.coils(), quantity, parity);
 
         return Map.of(
                 "success", true,
@@ -433,7 +441,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             throw new IllegalArgumentException("values参数不能为空");
         }
 
-        byte[] coilBytes = ModbusUtils.buildCoilBytes(values);
+        byte[] coilBytes = ModbusUtils.buildCoilBytes(values, parity);
         WriteMultipleCoilsResponse response = executeWithClient(client -> client.writeMultipleCoils(
                 unitId,
                 new WriteMultipleCoilsRequest(address, values.size(), coilBytes)
@@ -587,7 +595,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
                 for (WriteEntry entry : chunk) {
                     values.add(asBoolean(entry.value()));
                 }
-                byte[] coilBytes = ModbusUtils.buildCoilBytes(values);
+                byte[] coilBytes = ModbusUtils.buildCoilBytes(values, parity);
                 WriteMultipleCoilsResponse response = client.writeMultipleCoils(
                         unitId,
                         new WriteMultipleCoilsRequest(startAddress, values.size(), coilBytes)
@@ -629,7 +637,7 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
             short[] values = ModbusUtils.valueToRegisters(
                     entry.value(),
                     entry.point().getDataType(),
-                    java.nio.ByteOrder.BIG_ENDIAN
+                    byteOrder
             );
             System.arraycopy(values, 0, buffer, offset, values.length);
             offset += values.length;
@@ -647,7 +655,6 @@ public class ModbusTcpCollector extends AbstractModbusCollector {
         }
         return connectionAdapter;
     }
-
 
     private boolean asBoolean(Object value) {
         if (value instanceof Boolean b) {

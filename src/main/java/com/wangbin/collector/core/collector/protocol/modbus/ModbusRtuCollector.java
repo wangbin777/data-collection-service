@@ -39,7 +39,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
     private int baudRate;
     private int dataBits;
     private int stopBits;
-    private int parity;
+    private Parity parity = Parity.none;
     private int slaveId;
     private int timeout;
     private ByteOrder byteOrder = ByteOrder.BIG_ENDIAN;
@@ -69,7 +69,8 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         dataBits = connectionConfig.getInt("dataBits",8);
         stopBits = connectionConfig.getInt("stopBits",1);
         byteOrder = ModbusUtils.parseByteOrder(connectionConfig.getString("byteOrder","BIG_ENDIAN"));
-        parity = Parity.fromName(connectionConfig.getString("parity",Parity.none.name())).getValue();
+        String parityName = connectionConfig.getString("parity", Parity.none.name());
+        parity = Parity.fromName(parityName != null ? parityName.toLowerCase() : Parity.none.name());
         timeout = connectionConfig.getReadTimeout();
         slaveId = connectionConfig.getInt("slaveId",1);
 
@@ -77,7 +78,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
             cfg.setSerialPort(serialPort);
             cfg.setBaudRate(baudRate);
             cfg.setDataBits(dataBits);
-            cfg.setParity(parity);
+            cfg.setParity(parity.getValue());
             cfg.setStopBits(stopBits);
         });
 
@@ -85,7 +86,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         client.connect();
 
         log.info("Modbus RTU 连接成功: {} baud={} dataBits={} stopBits={} parity={}",
-                serialPort, baudRate, dataBits, stopBits, parity
+                serialPort, baudRate, dataBits, stopBits, parity.name()
         );
     }
 
@@ -132,7 +133,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
 
                 if (plan.getRegisterType() == RegisterType.COIL ||
                         plan.getRegisterType() == RegisterType.DISCRETE_INPUT) {
-                    List<Boolean> boolValues = ModbusUtils.getCoilValues(raw, plan.getQuantity());
+                    List<Boolean> boolValues = ModbusUtils.getCoilValues(raw, plan.getQuantity(), parity);
                     for (PointOffset po : plan.getPointOffsets()) {
                         Boolean value = null;
                         int offset = po.getOffset();
@@ -143,8 +144,12 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                     }
                 } else {
                     for (PointOffset po : plan.getPointOffsets()) {
-                        Object value = ModbusUtils.parseValue(raw,po.getOffset(),
-                                DataType.valueOf(po.getDataType()));
+                        Object value = ModbusUtils.parseValue(
+                                raw,
+                                po.getOffset(),
+                                DataType.valueOf(po.getDataType()),
+                                byteOrder
+                        );
                         results.put(po.getPointId(), value);
                     }
                 }
@@ -316,7 +321,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         status.put("baudRate", baudRate);
         status.put("dataBits", dataBits);
         status.put("stopBits", stopBits);
-        status.put("parity", parity);
+        status.put("parity", parity.name());
         status.put("slaveId", slaveId);
         status.put("timeout", timeout);
         status.put("byteOrder", byteOrder.toString());
@@ -375,7 +380,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                 new ReadCoilsRequest(address.getAddress(), 1));
         // 阻塞等待结果
         ReadCoilsResponse response = rtuWait(future);
-        return ModbusUtils.parseCoilValue(response.coils(), 0);
+        return ModbusUtils.parseCoilValue(response.coils(), 0, parity);
     }
 
     /**
@@ -386,7 +391,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                 new ReadDiscreteInputsRequest(address.getAddress(), 1));
         // 阻塞等待结果
         ReadDiscreteInputsResponse response = rtuWait(future);
-        return ModbusUtils.parseCoilValue(response.inputs(), 0);
+        return ModbusUtils.parseCoilValue(response.inputs(), 0, parity);
     }
 
     /**
@@ -401,7 +406,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                 new ReadHoldingRegistersRequest(address.getAddress(), registerCount)
         );
         ReadHoldingRegistersResponse response = rtuWait(future);
-        return ModbusUtils.convertByteToValue(response.registers(), dataType);
+        return ModbusUtils.convertByteToValue(response.registers(), dataType, byteOrder);
     }
 
     /**
@@ -416,7 +421,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
                 new ReadInputRegistersRequest(address.getAddress(), registerCount)
         );
         ReadInputRegistersResponse response = rtuWait(future);
-        return ModbusUtils.convertByteToValue(response.registers(), dataType);
+        return ModbusUtils.convertByteToValue(response.registers(), dataType, byteOrder);
     }
 
     /**
@@ -482,7 +487,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
             if (response != null && response.registers() != null) {
                 byte[] raw = response.registers();
                 ByteBuffer buffer = ByteBuffer.wrap(raw);
-                buffer.order(ByteOrder.BIG_ENDIAN);
+                buffer.order(byteOrder);
 
                 for (int i = 0; i < quantity; i++) {
                     values.add(buffer.getShort());
@@ -542,7 +547,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         try {
             ReadCoilsResponse response = rtuWait(future);
             // 使用工具类解析线圈值
-            List<Boolean> values = ModbusUtils.getCoilValues(response.coils(), quantity);
+        List<Boolean> values = ModbusUtils.getCoilValues(response.coils(), quantity, parity);
 
             return Map.of(
                     "success", response != null,
@@ -565,7 +570,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
 
         int quantity = values.size();
         // 使用工具类构建线圈字节数组
-        byte[] coilBytes = ModbusUtils.buildCoilBytes(values);
+        byte[] coilBytes = ModbusUtils.buildCoilBytes(values, parity);
 
         WriteMultipleCoilsRequest request = new WriteMultipleCoilsRequest(address, quantity, coilBytes);
         CompletionStage<WriteMultipleCoilsResponse> future = client.writeMultipleCoilsAsync(unitId, request);
@@ -639,7 +644,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
         result.put("baudRate", baudRate);
         result.put("dataBits", dataBits);
         result.put("stopBits", stopBits);
-        result.put("parity", parity);
+        result.put("parity", parity.name());
         result.put("slaveId", unitId);
         result.put("timeout", timeout);
         result.put("byteOrder", byteOrder.toString());
@@ -741,7 +746,7 @@ public class ModbusRtuCollector extends AbstractModbusCollector {
             for (WriteEntry entry : chunk) {
                 values.add(asBoolean(entry.value()));
             }
-            byte[] coilBytes = ModbusUtils.buildCoilBytes(values);
+            byte[] coilBytes = ModbusUtils.buildCoilBytes(values, parity);
             WriteMultipleCoilsRequest request = new WriteMultipleCoilsRequest(startAddress, values.size(), coilBytes);
             CompletionStage<WriteMultipleCoilsResponse> future = client.writeMultipleCoilsAsync(unitId, request);
             WriteMultipleCoilsResponse response = rtuWait(future);
