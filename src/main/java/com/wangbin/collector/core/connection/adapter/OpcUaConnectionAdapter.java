@@ -180,7 +180,6 @@ public class OpcUaConnectionAdapter extends AbstractConnectionAdapter<OpcUaClien
     private MessageSecurityMode resolveSecurityMode() {
         String text = firstNonBlank(
                 config.getStringConfig("securityMode", null),
-                config.getStringConfig("messageMode", null),
                 MessageSecurityMode.None.name());
         for (MessageSecurityMode value : MessageSecurityMode.values()) {
             if (value.name().equalsIgnoreCase(text)) {
