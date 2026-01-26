@@ -714,7 +714,17 @@ public class ModbusUtils {
         return ByteBuffer.wrap(raw).order(ByteOrder.BIG_ENDIAN).getShort();
     }
 
+    public static short toInt16(byte[] raw, Endian endian) {
+        raw = reorder(raw, endian);
+        return ByteBuffer.wrap(raw).order(ByteOrder.BIG_ENDIAN).getShort();
+    }
+
     public static int toUInt16(byte[] raw) {
+        return Short.toUnsignedInt(ByteBuffer.wrap(raw).order(ByteOrder.BIG_ENDIAN).getShort());
+    }
+
+    public static int toUInt16(byte[] raw, Endian endian) {
+        raw = reorder(raw, endian);
         return Short.toUnsignedInt(ByteBuffer.wrap(raw).order(ByteOrder.BIG_ENDIAN).getShort());
     }
 
@@ -746,9 +756,9 @@ public class ModbusUtils {
         switch (dataType.toUpperCase()) {
             case "INT16":
             case "SHORT":
-                return toInt16(raw);
+                return toInt16(raw,endian);
             case "UINT16":
-                return toUInt16(raw);
+                return toUInt16(raw,endian);
             case "INT32":
                 return toInt32(raw, endian);
             case "UINT32":
