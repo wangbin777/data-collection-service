@@ -106,10 +106,38 @@ public class SystemHealthService {
         if (value == null) {
             return Status.UNKNOWN;
         }
-        try {
-            return Status.valueOf(value.toString().toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            return Status.UNKNOWN;
+
+        if (value instanceof Status status) {
+            return status;
+        }
+
+        if (value instanceof Boolean bool) {
+            return bool ? Status.UP : Status.DOWN;
+        }
+
+        String normalized = value.toString().trim().toUpperCase();
+        switch (normalized) {
+            case "UP":
+            case "HEALTHY":
+            case "OK":
+            case "RUNNING":
+                return Status.UP;
+            case "DOWN":
+            case "UNHEALTHY":
+            case "FAILED":
+            case "ERROR":
+            case "CRITICAL":
+                return Status.DOWN;
+            case "DEGRADED":
+            case "WARN":
+            case "WARNING":
+                return Status.DEGRADED;
+            default:
+                try {
+                    return Status.valueOf(normalized);
+                } catch (IllegalArgumentException ignored) {
+                    return Status.UNKNOWN;
+                }
         }
     }
 }
