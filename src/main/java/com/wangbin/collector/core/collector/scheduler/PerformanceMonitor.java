@@ -236,4 +236,22 @@ public class PerformanceMonitor {
     boolean consumeTimeSliceTimeout() {
         return recentTimeSliceTimeout.getAndSet(false);
     }
+
+    Map<Integer, Long> getTimeSliceExecutionTimesSnapshot() {
+        return new ConcurrentHashMap<>(timeSliceExecutionTimes);
+    }
+
+    Map<Integer, Long> getOverloadedSlicesSnapshot() {
+        return new ConcurrentHashMap<>(overloadedSlices);
+    }
+
+    Map<String, Long> getSlowestDevicesSnapshot() {
+        return new ConcurrentHashMap<>(slowestDevices);
+    }
+
+    Map<String, Map<String, Object>> getAllDevicePerformance() {
+        Map<String, Map<String, Object>> stats = new ConcurrentHashMap<>();
+        devicePerformance.forEach((deviceId, perf) -> stats.put(deviceId, perf.getStatistics()));
+        return stats;
+    }
 }

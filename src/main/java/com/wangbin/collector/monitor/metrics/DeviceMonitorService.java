@@ -28,9 +28,15 @@ public class DeviceMonitorService {
                 .filter(DeviceConnectionSnapshot::isConnected)
                 .count();
 
+        HealthCounter healthCounter = snapshots.stream()
+                .collect(HealthCounter::new, HealthCounter::accept, HealthCounter::combine);
+
         return DeviceStatusSnapshot.builder()
                 .totalConnections(snapshots.size())
                 .activeConnections(activeConnections)
+                .healthyDevices(healthCounter.healthy)
+                .warningDevices(healthCounter.warning)
+                .dangerDevices(healthCounter.danger)
                 .connections(snapshots)
                 .build();
     }
@@ -52,5 +58,31 @@ public class DeviceMonitorService {
                 .successRate(successRate)
                 .connectionDuration(metrics != null ? metrics.getConnectionDuration() : 0L)
                 .build();
+    }
+
+    private static class HealthCounter {
+        private int healthy;
+        private int warning;
+        private int danger;
+
+        private void accept(DeviceConnectionSnapshot snapshot) {
+            if (snapshot.isConnected() && snapshot.getErrors() == 0) {
+                healthy++;
+                return;
+            }
+
+            if (snapshot.getErrors() > 5 || !snapshot.isConnected()) {
+                danger++;
+                return;
+            }
+
+            warning++;
+        }
+
+        private void combine(HealthCounter other) {
+            this.healthy += other.healthy;
+            this.warning += other.warning;
+            this.danger += other.danger;
+        }
     }
 }

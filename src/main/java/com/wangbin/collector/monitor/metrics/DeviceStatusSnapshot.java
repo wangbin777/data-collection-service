@@ -18,6 +18,15 @@ public class DeviceStatusSnapshot {
     private final int activeConnections;
 
     @Builder.Default
+    private final int healthyDevices = 0;
+
+    @Builder.Default
+    private final int warningDevices = 0;
+
+    @Builder.Default
+    private final int dangerDevices = 0;
+
+    @Builder.Default
     private final List<DeviceConnectionSnapshot> connections = Collections.emptyList();
 
     @Builder.Default

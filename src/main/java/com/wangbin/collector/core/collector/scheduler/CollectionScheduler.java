@@ -93,6 +93,17 @@ public class CollectionScheduler {
         this.dataProcessorPool = dataProcessorPool;
     }
 
+    public PerformanceStatsSnapshot getPerformanceSnapshot() {
+        return PerformanceStatsSnapshot.builder()
+                .timeSliceCount(TIME_SLICE_COUNT.get())
+                .timeSliceIntervalMs(TIME_SLICE_INTERVAL.get())
+                .timeSliceExecutionTimes(performanceMonitor.getTimeSliceExecutionTimesSnapshot())
+                .overloadedSlices(performanceMonitor.getOverloadedSlicesSnapshot())
+                .slowestDevices(performanceMonitor.getSlowestDevicesSnapshot())
+                .deviceStats(performanceMonitor.getAllDevicePerformance())
+                .build();
+    }
+
     @PostConstruct
     public void init() {
         // 获取服务器CPU核心数

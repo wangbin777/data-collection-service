@@ -2,6 +2,7 @@ package com.wangbin.collector.core.cache.manager;
 
 import com.wangbin.collector.core.cache.model.CacheData;
 import com.wangbin.collector.core.cache.model.CacheKey;
+import com.wangbin.collector.monitor.metrics.ExceptionMonitorService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,8 @@ public class MultiLevelCacheManager implements CacheManager {
     @Qualifier("redisCacheManager")
     private RedisCacheManager redisCacheManager;
 
+    @Autowired(required = false)
+    private ExceptionMonitorService exceptionMonitorService;
     // 缓存管理器列表（按层级排序）
     private final List<CacheManager> cacheManagers = new CopyOnWriteArrayList<>();
 
