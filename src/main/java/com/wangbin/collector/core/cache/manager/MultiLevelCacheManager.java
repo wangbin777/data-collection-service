@@ -64,6 +64,7 @@ public class MultiLevelCacheManager implements CacheManager {
         shuttingDown = false;
         if (!isOperational()) {
             log.warn("多级缓存管理器已禁用");
+            recordCacheWarning("多级缓存管理器已禁用", null);
             return;
         }
 
@@ -166,6 +167,10 @@ public class MultiLevelCacheManager implements CacheManager {
                             allSuccess = false;
                             log.warn("缓存写入失败: {} [Level: {}]",
                                     manager.getCacheType(), manager.getCacheLevel());
+                            recordCacheWarning(
+                                    String.format("缓存写入失败: %s [Level: %d]",
+                                            manager.getCacheType(), manager.getCacheLevel()),
+                                    key);
                         }
                     }
                 } else if (cacheAside) {
@@ -175,6 +180,9 @@ public class MultiLevelCacheManager implements CacheManager {
                     if (!success) {
                         allSuccess = false;
                         log.warn("主缓存写入失败: {}", primaryManager.getCacheType());
+                        recordCacheWarning(
+                                String.format("主缓存写入失败: %s", primaryManager.getCacheType()),
+                                key);
                     }
 
                     // 异步清除低级别缓存
@@ -185,6 +193,7 @@ public class MultiLevelCacheManager implements CacheManager {
                     if (!success) {
                         allSuccess = false;
                         log.warn("本地缓存写入失败");
+                        recordCacheWarning("本地缓存写入失败", key);
                     }
                 }
 
@@ -279,6 +288,7 @@ public class MultiLevelCacheManager implements CacheManager {
                         // 某个缓存级别失败，记录日志并继续尝试下一个缓存级别
                         log.warn("缓存读取失败: {} [Level: {}], 将尝试下一个缓存级别",
                                 manager.getCacheType(), manager.getCacheLevel(), e);
+                        recordCacheException(e, key);
                     }
                 }
 
@@ -370,6 +380,10 @@ public class MultiLevelCacheManager implements CacheManager {
                         allSuccess = false;
                         log.warn("缓存删除失败: {} [Level: {}]",
                                 manager.getCacheType(), manager.getCacheLevel());
+                        recordCacheWarning(
+                                String.format("缓存删除失败: %s [Level: %d]",
+                                        manager.getCacheType(), manager.getCacheLevel()),
+                                key);
                     }
                 }
 
@@ -392,6 +406,7 @@ public class MultiLevelCacheManager implements CacheManager {
             if (!success) {
                 allSuccess = false;
                 log.warn("批量缓存删除失败: key={}", key);
+                recordCacheWarning(String.format("批量缓存删除失败: %s", key), key);
             }
         }
 
@@ -411,6 +426,10 @@ public class MultiLevelCacheManager implements CacheManager {
                 allSuccess = false;
                 log.warn("模式删除缓存失败: {} [Level: {}]",
                         manager.getCacheType(), manager.getCacheLevel());
+                recordCacheWarning(
+                        String.format("模式删除缓存失败: %s [Level: %d]",
+                                manager.getCacheType(), manager.getCacheLevel()),
+                        null);
             }
         }
 
@@ -446,6 +465,10 @@ public class MultiLevelCacheManager implements CacheManager {
                 allSuccess = false;
                 log.warn("设置缓存过期时间失败: {} [Level: {}]",
                         manager.getCacheType(), manager.getCacheLevel());
+                recordCacheWarning(
+                        String.format("设置缓存过期时间失败: %s [Level: %d]",
+                                manager.getCacheType(), manager.getCacheLevel()),
+                        key);
             }
         }
 
@@ -864,6 +887,21 @@ public class MultiLevelCacheManager implements CacheManager {
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
         log.info("缓存管理器已{}", enabled ? "启用" : "禁用");
+    }
+
+    private void recordCacheWarning(String message, CacheKey key) {
+        if (exceptionMonitorService == null) {
+            return;
+        }
+        recordCacheException(new IllegalStateException(message), key);
+    }
+
+    private void recordCacheException(Throwable throwable, CacheKey key) {
+        if (exceptionMonitorService == null || throwable == null) {
+            return;
+        }
+        String resourceId = key != null ? key.getFullKey() : "MULTI_LEVEL_CACHE";
+        exceptionMonitorService.record(throwable, resourceId, null);
     }
 
     private boolean isOperational() {
