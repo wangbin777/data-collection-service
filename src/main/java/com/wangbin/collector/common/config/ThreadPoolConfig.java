@@ -80,46 +80,9 @@ public class ThreadPoolConfig {
         return executor;
     }
 
-    /**
-     * 采集任务线程池
-     */
-    @Bean("collectionTaskExecutor")
-    public Executor collectionTaskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        // 核心线程数
-        executor.setCorePoolSize(20);
-        // 最大线程数
-        executor.setMaxPoolSize(100);
-        // 队列容量
-        executor.setQueueCapacity(1000);
-        // 线程活跃时间（秒）
-        executor.setKeepAliveSeconds(60);
-        // 线程名前缀
-        executor.setThreadNamePrefix("collection-task-");
-        // 拒绝策略：由调用线程处理
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        // 等待所有任务结束后再关闭线程池
-        executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(60);
-        executor.initialize();
-        return executor;
-    }
+    
 
-    /**
-     * 数据处理线程池
-     */
-    @Bean("dataProcessExecutor")
-    public Executor dataProcessExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(10);
-        executor.setMaxPoolSize(50);
-        executor.setQueueCapacity(2000);
-        executor.setKeepAliveSeconds(60);
-        executor.setThreadNamePrefix("data-process-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
-        executor.initialize();
-        return executor;
-    }
+    
 
     /**
      * 数据上报线程池
@@ -137,21 +100,7 @@ public class ThreadPoolConfig {
         return executor;
     }
 
-    /**
-     * 连接管理线程池
-     */
-    @Bean("connectionExecutor")
-    public Executor connectionExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(5);
-        executor.setMaxPoolSize(20);
-        executor.setQueueCapacity(500);
-        executor.setKeepAliveSeconds(60);
-        executor.setThreadNamePrefix("connection-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
-        executor.initialize();
-        return executor;
-    }
+    
 
     /**
      * 定时任务线程池

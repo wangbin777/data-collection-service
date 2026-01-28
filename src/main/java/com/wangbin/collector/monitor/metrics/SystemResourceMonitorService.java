@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Service;
 
 import java.lang.management.ManagementFactory;
@@ -13,6 +14,7 @@ import java.lang.management.ThreadMXBean;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.ToDoubleFunction;
 
@@ -66,10 +68,16 @@ public class SystemResourceMonitorService {
     private Map<String, SystemResourceSnapshot.ThreadPoolSnapshot> collectThreadPoolStats() {
         Map<String, SystemResourceSnapshot.ThreadPoolSnapshot> result = new LinkedHashMap<>();
         String[] poolBeanNames = new String[]{
-                "collectionTaskExecutor",
-                "dataProcessExecutor",
+                "batchDispatcherExecutor",
+                "asyncCollectorExecutor",
+                "dataProcessorExecutor",
+                "cacheAsyncExecutor",
                 "reportExecutor",
-                "connectionExecutor"
+                "timeSliceScheduler",
+                "monitorExecutor",
+                "taskScheduler",
+                "ioIntensiveExecutor",
+                "cpuIntensiveExecutor"
         };
         for (String beanName : poolBeanNames) {
             result.put(beanName, inspectThreadPool(beanName));
@@ -89,8 +97,8 @@ public class SystemResourceMonitorService {
                     executor.getCorePoolSize(),
                     executor.getMaxPoolSize(),
                     executor.getActiveCount(),
-                    threadPoolExecutor != null ? threadPoolExecutor.getQueue().size() : 0,
-                    threadPoolExecutor != null ? threadPoolExecutor.getCompletedTaskCount() : 0
+                    threadPoolExecutor.getQueue().size(),
+                    threadPoolExecutor.getCompletedTaskCount()
             );
         }
 
@@ -104,7 +112,8 @@ public class SystemResourceMonitorService {
             );
         }
 
-        if (bean instanceof ExecutorService executorService && executorService instanceof ThreadPoolExecutor executor) {
+        if (bean instanceof ThreadPoolTaskScheduler scheduler) {
+            ScheduledThreadPoolExecutor executor = scheduler.getScheduledThreadPoolExecutor();
             return buildSnapshot(
                     executor.getCorePoolSize(),
                     executor.getMaximumPoolSize(),

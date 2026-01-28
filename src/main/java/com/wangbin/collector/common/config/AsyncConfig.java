@@ -14,15 +14,15 @@ import java.util.concurrent.Executor;
 @EnableAsync
 public class AsyncConfig implements AsyncConfigurer {
 
-    private final Executor collectionTaskExecutor;
+    private final Executor asyncExecutor;
 
-    public AsyncConfig(@Qualifier("collectionTaskExecutor") Executor collectionTaskExecutor) {
-        this.collectionTaskExecutor = collectionTaskExecutor;
+    public AsyncConfig(@Qualifier("asyncCollectorExecutor") Executor asyncExecutor) {
+        this.asyncExecutor = asyncExecutor;
     }
 
     @Override
     public Executor getAsyncExecutor() {
-        return collectionTaskExecutor;
+        return asyncExecutor;
     }
 
     @Override
