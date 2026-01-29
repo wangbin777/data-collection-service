@@ -422,6 +422,28 @@ public class ConfigManager {
     }
 
     /**
+     * Force reload of device-related configs, used before manual start requests.
+     *
+     * @param deviceId device identifier
+     * @return true if full config is available after refresh, otherwise false
+     */
+    public boolean refreshDeviceConfig(String deviceId) {
+        Objects.requireNonNull(deviceId, "设备ID不能为空");
+        reloadDeviceConfig(deviceId);
+        reloadDataPoints(deviceId);
+        reloadConnectionConfig(deviceId);
+
+        lock.readLock().lock();
+        try {
+            DeviceInfo device = deviceCache.get(deviceId);
+            List<DataPoint> points = pointCache.get(deviceId);
+            return device != null && points != null && !points.isEmpty();
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    /**
      * 获取缓存统计信息
      *
      * @return 缓存统计信息

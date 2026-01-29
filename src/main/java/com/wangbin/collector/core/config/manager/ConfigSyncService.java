@@ -63,11 +63,6 @@ public class ConfigSyncService {
     private final RestTemplate restTemplate;
 
     /**
-     * 配置版本缓存 key:配置类型 value:版本号
-     */
-    private final Map<String, Long> configVersions = new ConcurrentHashMap<>();
-
-    /**
      * 配置变更监听器列表
      */
     private final List<Consumer<ConfigUpdateEvent>> configListeners = new ArrayList<>();
@@ -139,40 +134,11 @@ public class ConfigSyncService {
     /**
      * 定时同步所有配置
      */
-    //@Scheduled(fixedDelayString = "${collector.config.sync-interval:30000}")
     public void syncAllConfig() {
         try {
-            log.debug("开始定时同步配置...");
-
-            // 1. 检查配置版本
-            Map<String, Long> remoteVersions = getRemoteConfigVersions();
-
-            if (remoteVersions.isEmpty()) {
-                log.warn("远程配置版本获取失败，跳过本次同步");
-                return;
-            }
-
-            // 2. 同步有变化的配置
-            boolean hasChanges = false;
-            for (Map.Entry<String, Long> entry : remoteVersions.entrySet()) {
-                String configType = entry.getKey();
-                Long remoteVersion = entry.getValue();
-                Long localVersion = configVersions.get(configType);
-
-                if (localVersion == null || !localVersion.equals(remoteVersion)) {
-                    log.info("检测到配置变更: {} (本地版本: {}, 远程版本: {})",
-                            configType, localVersion, remoteVersion);
-                    syncConfigByType(configType);
-                    configVersions.put(configType, remoteVersion);
-                    hasChanges = true;
-                }
-            }
-
-            if (hasChanges) {
-                log.info("配置同步完成，共检测到 {} 个配置类型变更", configVersions.size());
-            } else {
-                log.debug("配置未发生变化");
-            }
+            log.debug("开始执行手动配置同步任务...");
+            syncConfigByType("all");
+            log.info("配置同步完成（手动触发）");
         } catch (Exception e) {
             log.error("配置定时同步失败", e);
         }
@@ -250,11 +216,11 @@ public class ConfigSyncService {
         try {
             String url = runUrl + "/iot/collector/config/device/" + deviceId;
 
-            ResponseEntity<DeviceInfo> response = restTemplate.exchange(
-                    url, HttpMethod.GET, createAuthRequest(), DeviceInfo.class);
+            ResponseEntity<ApiResponse<DeviceInfo>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, createAuthRequest(), new ParameterizedTypeReference<>() {});
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                DeviceInfo device = response.getBody();
+                DeviceInfo device = response.getBody().getData();
                 deviceConfigs.put(deviceId, device);
                 log.debug("成功加载设备配置: {}", deviceId);
                 return device;
@@ -326,33 +292,6 @@ public class ConfigSyncService {
     }
 
 
-
-    /**
-     * 获取远程配置版本信息
-     *
-     * @return 配置版本映射
-     */
-    private Map<String, Long> getRemoteConfigVersions() {
-        try {
-            String url = runUrl + "/api/collector/config/versions?serviceId=" + serviceId;
-
-            ResponseEntity<Map<String, Long>> response = restTemplate.exchange(
-                    url, HttpMethod.GET, createAuthRequest(),
-                    new ParameterizedTypeReference<>() {
-                    });
-
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                return response.getBody();
-            } else {
-                log.warn("获取配置版本失败，HTTP状态码: {}", response.getStatusCode());
-            }
-        } catch (Exception e) {
-            log.error("获取配置版本失败", e);
-            return Collections.emptyMap();
-        }
-
-        return Collections.emptyMap();
-    }
 
     /**
      * 根据配置类型同步配置
@@ -465,7 +404,6 @@ public class ConfigSyncService {
     public void clearCache() {
         deviceConfigs.clear();
         pointConfigs.clear();
-        configVersions.clear();
         log.info("配置缓存已清空");
     }
 
