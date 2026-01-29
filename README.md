@@ -1,153 +1,248 @@
-data-collection-service
+﻿data-collection-service
 Generated skeleton project (Java 17, Spring Boot).
 Run:
   mvn -U clean package
   java -jar target/data-collection-service-0.0.1-SNAPSHOT.jar
 
+## Docker 部署
 
-- 查询指定设备的指定数据点实时值 ：
+项目已经内置 JDK 17 运行时镜像与 `docker-compose.yml`，可按以下步骤完成容器化部署。
+
+### 1. 构建可运行的 JAR
 
 ```
-GET /api/data/device/{deviceId}/point/
+mvn -U clean package -DskipTests
+```
+
+构建结果位于 `target/` 目录，Dockerfile 会把 JAR 复制到容器内的 `/app.jar`。
+
+### 2. 构建镜像
+
+```
+docker build \
+  --build-arg JAR_FILE=target/data-collection-service-0.0.1-SNAPSHOT.jar \
+  -t data-collection-service:latest .
+```
+
+- 基础镜像：`eclipse-temurin:17-jdk-jammy`
+- 入口：`java -jar /app.jar`
+- 可通过 `--build-arg JAR_FILE=...` 指向不同版本的可执行包。
+
+### 3. 单容器运行
+
+```
+docker run -d --name data-collection-service \
+  -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=prod \
+  data-collection-service:latest
+```
+
+需要自定义端口或配置时，可增添 `-e SERVER_PORT=9090`、`-v /opt/logs:/logs` 等参数，并在应用配置里引用。
+
+### 4. 使用 Docker Compose
+
+仓库自带的 `docker-compose.yml` 会同时拉起应用和 Redis：
+
+```
+version: "3.9"
+services:
+  app:
+    build: .
+    image: data-collection-service:latest
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      JAVA_OPTS: -Xms256m -Xmx512m
+    volumes:
+      - app-logs:/opt/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  app-logs:
+  redis-data:
+```
+
+常用命令：
+
+```
+docker compose up -d
+
+docker compose logs -f
+
+docker compose down
+```
+
+如需持久化 Redis 数据或挂载应用日志，只需在相应服务下添加 `volumes` 映射，例如：
+
+```
+services:
+  app:
+    volumes:
+      - ./logs:/logs
+  redis:
+    volumes:
+      - redis-data:/data
+volumes:
+  redis-data:
+```
+
+
+- 鏌ヨ鎸囧畾璁惧鐨勬寚瀹氭暟鎹偣瀹炴椂鍊?锛?
+
+```
+GET聽/api/data/device/{deviceId}/point/
 {pointId}
 ```
-示例： GET /api/data/device/device-001/point/temperature
-- 查询指定设备的所有数据点实时值 ：
+绀轰緥锛?GET /api/data/device/device-001/point/temperature
+- 鏌ヨ鎸囧畾璁惧鐨勬墍鏈夋暟鎹偣瀹炴椂鍊?锛?
 
 ```
-GET /api/data/device/{deviceId}
+GET聽/api/data/device/{deviceId}
 ```
-支持可选参数 pointIds 筛选特定数据点：
+鏀寔鍙€夊弬鏁?pointIds 绛涢€夌壒瀹氭暟鎹偣锛?
 
 ```
-GET /api/data/device/device-001?
+GET聽/api/data/device/device-001?
 pointIds=temperature,humidity
 ```
-- 查询所有设备基本信息 ：
+- 鏌ヨ鎵€鏈夎澶囧熀鏈俊鎭?锛?
 
 ```
-GET /api/data/devices
+GET聽/api/data/devices
 ```
-- 查询指定设备的所有数据点配置 ：
+- 鏌ヨ鎸囧畾璁惧鐨勬墍鏈夋暟鎹偣閰嶇疆 锛?
 
 ```
-GET /api/data/device/{deviceId}/points
+GET聽/api/data/device/{deviceId}/points
 ```
 
 
 
-- 在 DataPoint 增加上报/变化/事件配置解析（src/main/java/com/wangbin/collector/common/domain/entity/DataPoint.java:344 起），支持通过 additionalConfig 配置 reportEnabled、changeThreshold、changeMinIntervalMs、eventEnabled、   
-  eventMinIntervalMs，并继续遵循“无别名=只保留 raw”的约束。
-- ReportProperties 新增调度与限流参数（src/main/java/com/wangbin/collector/core/report/config/ReportProperties.java:56 起），包括默认 10s 周期、最小变化触发间隔、事件默认间隔、网关 MPS、单包字段/字节限制与 schemaVersion，便于
-  统一调优。
-- DeviceShadow/ShadowManager 扩展为完整的触发引擎：影子保存最后上报值/变化/事件时间（src/main/java/com/wangbin/collector/core/report/shadow/DeviceShadow.java:17-107），ShadowManager 在 apply 中同时计算“变化触发 + 事件触发”并返
-  回 ShadowUpdateResult（src/main/java/com/wangbin/collector/core/report/shadow/ShadowManager.java:31）；事件支持 AlarmRule、metadata 标记及质量退化三种来源，并套用最小间隔（ShadowManager.java:90 起）。
-- CacheReportService 彻底重写：定时快照 + 变化立即刷新 + 事件即时上报，并附带网关限流（快照受限、事件不受限），同时在所有 chunk 上报后回写影子状态（src/main/java/com/wangbin/collector/core/report/service/                      
-  CacheReportService.java:1-309）。事件上报使用 MessageConstant.MESSAGE_TYPE_EVENT_POST，快照/事件都打上 schemaVersion、seq、batchId/chunk*，符合 200 字段与 128KB 双阈值。
-- 事件/变化默认行为说明：变化触发仅在点位配置 changeThreshold 时生效；事件由 alarmRule、metadata.event*、或质量跌至 WARNING 以下触发，并可借 eventMinIntervalMs 限制频率。
+- 鍦?DataPoint 澧炲姞涓婃姤/鍙樺寲/浜嬩欢閰嶇疆瑙ｆ瀽锛坰rc/main/java/com/wangbin/collector/common/domain/entity/DataPoint.java:344 璧凤級锛屾敮鎸侀€氳繃 additionalConfig 閰嶇疆 reportEnabled銆乧hangeThreshold銆乧hangeMinIntervalMs銆乪ventEnabled銆?  
+  eventMinIntervalMs锛屽苟缁х画閬靛惊鈥滄棤鍒悕=鍙繚鐣?raw鈥濈殑绾︽潫銆?
+- ReportProperties 鏂板璋冨害涓庨檺娴佸弬鏁帮紙src/main/java/com/wangbin/collector/core/report/config/ReportProperties.java:56 璧凤級锛屽寘鎷粯璁?10s 鍛ㄦ湡銆佹渶灏忓彉鍖栬Е鍙戦棿闅斻€佷簨浠堕粯璁ら棿闅斻€佺綉鍏?MPS銆佸崟鍖呭瓧娈?瀛楄妭闄愬埗涓?schemaVersion锛屼究浜?
+  缁熶竴璋冧紭銆?
+- DeviceShadow/ShadowManager 鎵╁睍涓哄畬鏁寸殑瑙﹀彂寮曟搸锛氬奖瀛愪繚瀛樻渶鍚庝笂鎶ュ€?鍙樺寲/浜嬩欢鏃堕棿锛坰rc/main/java/com/wangbin/collector/core/report/shadow/DeviceShadow.java:17-107锛夛紝ShadowManager 鍦?apply 涓悓鏃惰绠椻€滃彉鍖栬Е鍙?+ 浜嬩欢瑙﹀彂鈥濆苟杩?
+  鍥?ShadowUpdateResult锛坰rc/main/java/com/wangbin/collector/core/report/shadow/ShadowManager.java:31锛夛紱浜嬩欢鏀寔 AlarmRule銆乵etadata 鏍囪鍙婅川閲忛€€鍖栦笁绉嶆潵婧愶紝骞跺鐢ㄦ渶灏忛棿闅旓紙ShadowManager.java:90 璧凤級銆?
+- CacheReportService 褰诲簳閲嶅啓锛氬畾鏃跺揩鐓?+ 鍙樺寲绔嬪嵆鍒锋柊 + 浜嬩欢鍗虫椂涓婃姤锛屽苟闄勫甫缃戝叧闄愭祦锛堝揩鐓у彈闄愩€佷簨浠朵笉鍙楅檺锛夛紝鍚屾椂鍦ㄦ墍鏈?chunk 涓婃姤鍚庡洖鍐欏奖瀛愮姸鎬侊紙src/main/java/com/wangbin/collector/core/report/service/                      
+  CacheReportService.java:1-309锛夈€備簨浠朵笂鎶ヤ娇鐢?MessageConstant.MESSAGE_TYPE_EVENT_POST锛屽揩鐓?浜嬩欢閮芥墦涓?schemaVersion銆乻eq銆乥atchId/chunk*锛岀鍚?200 瀛楁涓?128KB 鍙岄槇鍊笺€?
+- 浜嬩欢/鍙樺寲榛樿琛屼负璇存槑锛氬彉鍖栬Е鍙戜粎鍦ㄧ偣浣嶉厤缃?changeThreshold 鏃剁敓鏁堬紱浜嬩欢鐢?alarmRule銆乵etadata.event*銆佹垨璐ㄩ噺璺岃嚦 WARNING 浠ヤ笅瑙﹀彂锛屽苟鍙€?eventMinIntervalMs 闄愬埗棰戠巼銆?
 
-配置与使用要点
+閰嶇疆涓庝娇鐢ㄨ鐐?
 
-- 要启用模式 B（变化触发），为点位 additionalConfig 设置：{"changeThreshold":5.0,"changeMinIntervalMs":3000} 等；模式 C（事件）可沿用 alarmRule，或在处理链中写入 metadata.eventTriggered=true/eventType。
-- 全局上报节奏参数集中在 collector.report.*：默认 interval=10000、minReportIntervalMs=2000、eventMinIntervalMs=5000、maxGatewayMessagesPerSecond=200、maxPropertiesPerMessage=200、maxPayloadBytes=131072，可按设备规模调优。
-- 仍需确保点位有 pointAlias 才能进设备快照；否则只保留 raw（但事件仍可触发，上报字段取 pointCode/pointId）。
+- 瑕佸惎鐢ㄦā寮?B锛堝彉鍖栬Е鍙戯級锛屼负鐐逛綅 additionalConfig 璁剧疆锛歿"changeThreshold":5.0,"changeMinIntervalMs":3000} 绛夛紱妯″紡 C锛堜簨浠讹級鍙部鐢?alarmRule锛屾垨鍦ㄥ鐞嗛摼涓啓鍏?metadata.eventTriggered=true/eventType銆?
+- 鍏ㄥ眬涓婃姤鑺傚鍙傛暟闆嗕腑鍦?collector.report.*锛氶粯璁?interval=10000銆乵inReportIntervalMs=2000銆乪ventMinIntervalMs=5000銆乵axGatewayMessagesPerSecond=200銆乵axPropertiesPerMessage=200銆乵axPayloadBytes=131072锛屽彲鎸夎澶囪妯¤皟浼樸€?
+- 浠嶉渶纭繚鐐逛綅鏈?pointAlias 鎵嶈兘杩涜澶囧揩鐓э紱鍚﹀垯鍙繚鐣?raw锛堜絾浜嬩欢浠嶅彲瑙﹀彂锛屼笂鎶ュ瓧娈靛彇 pointCode/pointId锛夈€?
 
-测试
+娴嬭瘯
 
 - mvn -q -DskipTests "-Dspring-boot.repackage.skip=true" package
 
-若后续需更多告警元信息或云端 schema，对应可在 ShadowManager.EventInfo 和 CacheReportService.dispatchEvent 中扩展。
+鑻ュ悗缁渶鏇村鍛婅鍏冧俊鎭垨浜戠 schema锛屽搴斿彲鍦?ShadowManager.EventInfo 鍜?CacheReportService.dispatchEvent 涓墿灞曘€?
 
 
 
-## 优化
+## 浼樺寲
 
-- DataPoint 现在直接解析 reportEnabled/changeThreshold/changeMinIntervalMs/eventEnabled/eventMinIntervalMs，并继续以 pointAlias 作为上报字段判定，保证在配置层就能筛选“入快照/变化/事件”点（src/main/java/com/wangbin/collector/  
-  common/domain/entity/DataPoint.java:344）。
-  - ReportData 增强为属性映射 + 时间戳双 Map，并在 addProperty 时防止重复字段；新增 Logger 后若重复字段会记录并跳过，同时 chunk 仍携带 propertyTs、quality、batchId/seq/chunk* 元数据（src/main/java/com/wangbin/collector/core/    
-    report/model/ReportData.java:20-198）。
-  - 影子层重构：DeviceShadow 维护最新值、上次上报时间戳、变化/事件触发时间及事件签名；ShadowManager 在 apply 中同步计算“变化触发 + 事件触发”，事件去重按 eventType + message hash 且受 eventMinIntervalMs 控制，满足“同类型事件窗口
-    内最多 1 次”的约束（src/main/java/com/wangbin/collector/core/report/shadow 包）。
-  - CacheReportService 实现三种模式并加入限流/去重/按字段回写：定时快照（切包后异步上报）、变化触发立即刷、事件触发即时单独发送；chunk 上报采用 FlushTracker 跟踪成功/失败，只有成功的字段才回写，失败字段保留等待下一轮，且整包仅在
-    所有 chunk 成功时才清脏；快照上报受 maxPropertiesPerMessage、maxPayloadBytes、maxGatewayMessagesPerSecond、minReportIntervalMs 约束，事件通道不受限（src/main/java/com/wangbin/collector/core/report/service/                   
-    CacheReportService.java:1-330）。
-  - 事件上报使用 MessageConstant.MESSAGE_TYPE_EVENT_POST，并携带规则 ID/名称、等级、别名等上下文；变化/事件的最小间隔可 per-point 配置，默认值来自 collector.report.*。ReportProperties 新增 minReportIntervalMs、                  
-    eventMinIntervalMs、maxGatewayMessagesPerSecond、maxPropertiesPerMessage、maxPayloadBytes、schemaVersion 等开箱参数（src/main/java/com/wangbin/collector/core/report/config/ReportProperties.java:56-86）。
+- DataPoint 鐜板湪鐩存帴瑙ｆ瀽 reportEnabled/changeThreshold/changeMinIntervalMs/eventEnabled/eventMinIntervalMs锛屽苟缁х画浠?pointAlias 浣滀负涓婃姤瀛楁鍒ゅ畾锛屼繚璇佸湪閰嶇疆灞傚氨鑳界瓫閫夆€滃叆蹇収/鍙樺寲/浜嬩欢鈥濈偣锛坰rc/main/java/com/wangbin/collector/  
+  common/domain/entity/DataPoint.java:344锛夈€?
+  - ReportData 澧炲己涓哄睘鎬ф槧灏?+ 鏃堕棿鎴冲弻 Map锛屽苟鍦?addProperty 鏃堕槻姝㈤噸澶嶅瓧娈碉紱鏂板 Logger 鍚庤嫢閲嶅瀛楁浼氳褰曞苟璺宠繃锛屽悓鏃?chunk 浠嶆惡甯?propertyTs銆乹uality銆乥atchId/seq/chunk* 鍏冩暟鎹紙src/main/java/com/wangbin/collector/core/    
+    report/model/ReportData.java:20-198锛夈€?
+  - 褰卞瓙灞傞噸鏋勶細DeviceShadow 缁存姢鏈€鏂板€笺€佷笂娆′笂鎶ユ椂闂存埑銆佸彉鍖?浜嬩欢瑙﹀彂鏃堕棿鍙婁簨浠剁鍚嶏紱ShadowManager 鍦?apply 涓悓姝ヨ绠椻€滃彉鍖栬Е鍙?+ 浜嬩欢瑙﹀彂鈥濓紝浜嬩欢鍘婚噸鎸?eventType + message hash 涓斿彈 eventMinIntervalMs 鎺у埗锛屾弧瓒斥€滃悓绫诲瀷浜嬩欢绐楀彛
+    鍐呮渶澶?1 娆♀€濈殑绾︽潫锛坰rc/main/java/com/wangbin/collector/core/report/shadow 鍖咃級銆?
+  - CacheReportService 瀹炵幇涓夌妯″紡骞跺姞鍏ラ檺娴?鍘婚噸/鎸夊瓧娈靛洖鍐欙細瀹氭椂蹇収锛堝垏鍖呭悗寮傛涓婃姤锛夈€佸彉鍖栬Е鍙戠珛鍗冲埛銆佷簨浠惰Е鍙戝嵆鏃跺崟鐙彂閫侊紱chunk 涓婃姤閲囩敤 FlushTracker 璺熻釜鎴愬姛/澶辫触锛屽彧鏈夋垚鍔熺殑瀛楁鎵嶅洖鍐欙紝澶辫触瀛楁淇濈暀绛夊緟涓嬩竴杞紝涓旀暣鍖呬粎鍦?
+    鎵€鏈?chunk 鎴愬姛鏃舵墠娓呰剰锛涘揩鐓т笂鎶ュ彈 maxPropertiesPerMessage銆乵axPayloadBytes銆乵axGatewayMessagesPerSecond銆乵inReportIntervalMs 绾︽潫锛屼簨浠堕€氶亾涓嶅彈闄愶紙src/main/java/com/wangbin/collector/core/report/service/                   
+    CacheReportService.java:1-330锛夈€?
+  - 浜嬩欢涓婃姤浣跨敤 MessageConstant.MESSAGE_TYPE_EVENT_POST锛屽苟鎼哄甫瑙勫垯 ID/鍚嶇О銆佺瓑绾с€佸埆鍚嶇瓑涓婁笅鏂囷紱鍙樺寲/浜嬩欢鐨勬渶灏忛棿闅斿彲 per-point 閰嶇疆锛岄粯璁ゅ€兼潵鑷?collector.report.*銆俁eportProperties 鏂板 minReportIntervalMs銆?                 
+    eventMinIntervalMs銆乵axGatewayMessagesPerSecond銆乵axPropertiesPerMessage銆乵axPayloadBytes銆乻chemaVersion 绛夊紑绠卞弬鏁帮紙src/main/java/com/wangbin/collector/core/report/config/ReportProperties.java:56-86锛夈€?
 
-  测试
+  娴嬭瘯
 
   - mvn -q -DskipTests "-Dspring-boot.repackage.skip=true" package
 
-  如需后续拓展（例如更多事件字段、失败重试策略或云端回执）可在 FlushTracker/dispatchEvent 基础上继续增强。
+  濡傞渶鍚庣画鎷撳睍锛堜緥濡傛洿澶氫簨浠跺瓧娈点€佸け璐ラ噸璇曠瓥鐣ユ垨浜戠鍥炴墽锛夊彲鍦?FlushTracker/dispatchEvent 鍩虹涓婄户缁寮恒€?
 
 
 
-##  优化 
-• 当前实现还缺少/不满足的点：
+##  浼樺寲 
+鈥?褰撳墠瀹炵幇杩樼己灏?涓嶆弧瓒崇殑鐐癸細
 
-- DataPoint 仍旧以 “只要 alias 非空就默认 reportEnabled=true”，没有落实“reportEnabled 默认 false、必须显式开启”以及 reportField 字段。也没有处理“无别名即 raw-only”之外的“reportEnabled=false 时即便有别名也不进快照”的逻辑。
-- FieldUniquenessValidator 尚未接入/未对 reportField 冲突做降级处理，ReportData.addProperty() 虽防止覆盖，但遇到冲突只是日志 warn，没有将冲突点降级为 raw-only。
-- 切包 splitSnapshot 虽同步字段，但没有在发送失败时保留 chunk 以便下一轮重试；flush 回写只基于成功 chunk，但失败 chunk 没有复位 shadow 状态或触发下次发送。
-- 事件防风暴仅通过 eventType+message 判断，未实现“事件内容 hash 去重 + eventMinIntervalMs 内最多 1 次”完整规则，也未将 eventMinIntervalMs 应用于 metadata 驱动的事件。
-- 上述功能缺乏单元测试；要求的 DataPoint/reportField、变化触发、事件触发、防风暴、切包同步、字段冲突等测试尚未编写。
-
-
+- DataPoint 浠嶆棫浠?鈥滃彧瑕?alias 闈炵┖灏遍粯璁?reportEnabled=true鈥濓紝娌℃湁钀藉疄鈥渞eportEnabled 榛樿 false銆佸繀椤绘樉寮忓紑鍚€濅互鍙?reportField 瀛楁銆備篃娌℃湁澶勭悊鈥滄棤鍒悕鍗?raw-only鈥濅箣澶栫殑鈥渞eportEnabled=false 鏃跺嵆渚挎湁鍒悕涔熶笉杩涘揩鐓р€濈殑閫昏緫銆?
+- FieldUniquenessValidator 灏氭湭鎺ュ叆/鏈 reportField 鍐茬獊鍋氶檷绾у鐞嗭紝ReportData.addProperty() 铏介槻姝㈣鐩栵紝浣嗛亣鍒板啿绐佸彧鏄棩蹇?warn锛屾病鏈夊皢鍐茬獊鐐归檷绾т负 raw-only銆?
+- 鍒囧寘 splitSnapshot 铏藉悓姝ュ瓧娈碉紝浣嗘病鏈夊湪鍙戦€佸け璐ユ椂淇濈暀 chunk 浠ヤ究涓嬩竴杞噸璇曪紱flush 鍥炲啓鍙熀浜庢垚鍔?chunk锛屼絾澶辫触 chunk 娌℃湁澶嶄綅 shadow 鐘舵€佹垨瑙﹀彂涓嬫鍙戦€併€?
+- 浜嬩欢闃查鏆翠粎閫氳繃 eventType+message 鍒ゆ柇锛屾湭瀹炵幇鈥滀簨浠跺唴瀹?hash 鍘婚噸 + eventMinIntervalMs 鍐呮渶澶?1 娆♀€濆畬鏁磋鍒欙紝涔熸湭灏?eventMinIntervalMs 搴旂敤浜?metadata 椹卞姩鐨勪簨浠躲€?
+- 涓婅堪鍔熻兘缂轰箯鍗曞厓娴嬭瘯锛涜姹傜殑 DataPoint/reportField銆佸彉鍖栬Е鍙戙€佷簨浠惰Е鍙戙€侀槻椋庢毚銆佸垏鍖呭悓姝ャ€佸瓧娈靛啿绐佺瓑娴嬭瘯灏氭湭缂栧啓銆?
 
 
-## 优化 
-- src/main/java/com/wangbin/collector/common/domain/entity/DataPoint.java:376-426 现集中解析 reportEnabled/reportField/change/event 配置，getReportField() 先取显式字段再回退到别名，无别名则强制 raw-only；isReportEnabled() 只有
-  在标记为 true 且字段不冲突时才返回 true。
-  - src/main/java/com/wangbin/collector/core/report/config/ReportProperties.java:36-88 补齐调度与限流参数（intervalMs、minReportIntervalMs、maxGatewayMessagesPerSecond、maxPropertiesPerMessage、maxPayloadBytes、schemaVersion），
-    供聚合/限流逻辑统一读取。
-  - src/main/java/com/wangbin/collector/core/report/service/CacheReportService.java:204-333,267-322,489-522 重写切包与发送流程：splitSnapshot 恒加 chunk 元数据，payload/字段双阈值切分；发送前登记 chunk key，handleChunkResult 失
-    败按设备重试并仅对成功 chunk 回写影子；FlushTracker 跟踪 in-flight 数和每 chunk 的重试次数。
-  - src/main/java/com/wangbin/collector/core/report/validator/FieldUniquenessValidator.java:18-41/src/main/java/com/wangbin/collector/core/report/shadow/ShadowManager.java:48-146 保证设备内 reportField 唯一并在影子层实现变化阈值
-    与事件防风暴（最小间隔 + eventType+内容指纹去重）。
-  - 新增单元测试覆盖关键路径：DataPointTest 验证字段解析(src/test/java/com/wangbin/collector/common/domain/entity/DataPointTest.java:13)、FieldUniquenessValidatorTest 验证冲突降级(…/validator/                                    
-    FieldUniquenessValidatorTest.java:26)、ShadowManagerTest 覆盖变化触发与事件节流(…/shadow/ShadowManagerTest.java:27,59)、CacheReportServiceTest 校验切包时属性/质量/时间戳同步(…/service/CacheReportServiceTest.java:15)。
 
-  测试
+
+## 浼樺寲 
+- src/main/java/com/wangbin/collector/common/domain/entity/DataPoint.java:376-426 鐜伴泦涓В鏋?reportEnabled/reportField/change/event 閰嶇疆锛実etReportField() 鍏堝彇鏄惧紡瀛楁鍐嶅洖閫€鍒板埆鍚嶏紝鏃犲埆鍚嶅垯寮哄埗 raw-only锛沬sReportEnabled() 鍙湁
+  鍦ㄦ爣璁颁负 true 涓斿瓧娈典笉鍐茬獊鏃舵墠杩斿洖 true銆?
+  - src/main/java/com/wangbin/collector/core/report/config/ReportProperties.java:36-88 琛ラ綈璋冨害涓庨檺娴佸弬鏁帮紙intervalMs銆乵inReportIntervalMs銆乵axGatewayMessagesPerSecond銆乵axPropertiesPerMessage銆乵axPayloadBytes銆乻chemaVersion锛夛紝
+    渚涜仛鍚?闄愭祦閫昏緫缁熶竴璇诲彇銆?
+  - src/main/java/com/wangbin/collector/core/report/service/CacheReportService.java:204-333,267-322,489-522 閲嶅啓鍒囧寘涓庡彂閫佹祦绋嬶細splitSnapshot 鎭掑姞 chunk 鍏冩暟鎹紝payload/瀛楁鍙岄槇鍊煎垏鍒嗭紱鍙戦€佸墠鐧昏 chunk key锛宧andleChunkResult 澶?
+    璐ユ寜璁惧閲嶈瘯骞朵粎瀵规垚鍔?chunk 鍥炲啓褰卞瓙锛汧lushTracker 璺熻釜 in-flight 鏁板拰姣?chunk 鐨勯噸璇曟鏁般€?
+  - src/main/java/com/wangbin/collector/core/report/validator/FieldUniquenessValidator.java:18-41/src/main/java/com/wangbin/collector/core/report/shadow/ShadowManager.java:48-146 淇濊瘉璁惧鍐?reportField 鍞竴骞跺湪褰卞瓙灞傚疄鐜板彉鍖栭槇鍊?
+    涓庝簨浠堕槻椋庢毚锛堟渶灏忛棿闅?+ eventType+鍐呭鎸囩汗鍘婚噸锛夈€?
+  - 鏂板鍗曞厓娴嬭瘯瑕嗙洊鍏抽敭璺緞锛欴ataPointTest 楠岃瘉瀛楁瑙ｆ瀽(src/test/java/com/wangbin/collector/common/domain/entity/DataPointTest.java:13)銆丗ieldUniquenessValidatorTest 楠岃瘉鍐茬獊闄嶇骇(鈥?validator/                                    
+    FieldUniquenessValidatorTest.java:26)銆丼hadowManagerTest 瑕嗙洊鍙樺寲瑙﹀彂涓庝簨浠惰妭娴?鈥?shadow/ShadowManagerTest.java:27,59)銆丆acheReportServiceTest 鏍￠獙鍒囧寘鏃跺睘鎬?璐ㄩ噺/鏃堕棿鎴冲悓姝?鈥?service/CacheReportServiceTest.java:15)銆?
+
+  娴嬭瘯
 
   - mvn -q test
 
-  未完成/注意
+  鏈畬鎴?娉ㄦ剰
 
-  - CacheReportService.java:204-248 中 maxPayloadBytes 仍按字段名+值字符串长度粗估 MQTT 载荷。如果需要严格的 UTF-8 JSON 字节级校验，后续需替换为真实序列化测算。
+  - CacheReportService.java:204-248 涓?maxPayloadBytes 浠嶆寜瀛楁鍚?鍊煎瓧绗︿覆闀垮害绮椾及 MQTT 杞借嵎銆傚鏋滈渶瑕佷弗鏍肩殑 UTF-8 JSON 瀛楄妭绾ф牎楠岋紝鍚庣画闇€鏇挎崲涓虹湡瀹炲簭鍒楀寲娴嬬畻銆?
 
-  后续可按需在实际点位 additionalConfig 中补齐 reportEnabled/reportField，并观察 128KB 限制是否需要更精确的 payload 计算。       
-
-
-
-## 上报配置
-• - 代码现已具备设备级聚合/变化/事件三类上报、字段唯一校验、切包与限流等逻辑，但默认依赖 ReportProperties 与点位 additionalConfig。若 collector.report.enabled=true 且 MQTT 配置正确，容器启动后即可按 10s 周期发快照（变化/事件按规
-则触发），无需再单点实时推送。
-- 启用步骤：① 在点位配置里设置 additionalConfig，至少包含 reportEnabled=true 与 pointAlias（或显式 reportField），缺少别名的点仍只写 raw 数据；② 按需设置 changeThreshold、changeMinIntervalMs、eventEnabled 等参数；③ 在         
-  application.yml 中填好 collector.report.mqtt.*（brokerUrl/clientId/topic/qos 等）；④ 需要调整周期/限流可在同一配置项修改 intervalMs、maxPropertiesPerMessage、maxPayloadBytes 等。
-- 配置完成后重启网关即可开始汇报。若要验证，可观察日志中 CacheReportService/MqttReportHandler 是否输出发送记录。
+  鍚庣画鍙寜闇€鍦ㄥ疄闄呯偣浣?additionalConfig 涓ˉ榻?reportEnabled/reportField锛屽苟瑙傚療 128KB 闄愬埗鏄惁闇€瑕佹洿绮剧‘鐨?payload 璁＄畻銆?      
 
 
 
-## 上报问题
-shadowManager.apply(...) 会在三种情况下返回 eventInfo：
+## 涓婃姤閰嶇疆
+鈥?- 浠ｇ爜鐜板凡鍏峰璁惧绾ц仛鍚?鍙樺寲/浜嬩欢涓夌被涓婃姤銆佸瓧娈靛敮涓€鏍￠獙銆佸垏鍖呬笌闄愭祦绛夐€昏緫锛屼絾榛樿渚濊禆 ReportProperties 涓庣偣浣?additionalConfig銆傝嫢 collector.report.enabled=true 涓?MQTT 閰嶇疆姝ｇ‘锛屽鍣ㄥ惎鍔ㄥ悗鍗冲彲鎸?10s 鍛ㄦ湡鍙戝揩鐓э紙鍙樺寲/浜嬩欢鎸夎
+鍒欒Е鍙戯級锛屾棤闇€鍐嶅崟鐐瑰疄鏃舵帹閫併€?
+- 鍚敤姝ラ锛氣憼 鍦ㄧ偣浣嶉厤缃噷璁剧疆 additionalConfig锛岃嚦灏戝寘鍚?reportEnabled=true 涓?pointAlias锛堟垨鏄惧紡 reportField锛夛紝缂哄皯鍒悕鐨勭偣浠嶅彧鍐?raw 鏁版嵁锛涒憽 鎸夐渶璁剧疆 changeThreshold銆乧hangeMinIntervalMs銆乪ventEnabled 绛夊弬鏁帮紱鈶?鍦?        
+  application.yml 涓～濂?collector.report.mqtt.*锛坆rokerUrl/clientId/topic/qos 绛夛級锛涒懀 闇€瑕佽皟鏁村懆鏈?闄愭祦鍙湪鍚屼竴閰嶇疆椤逛慨鏀?intervalMs銆乵axPropertiesPerMessage銆乵axPayloadBytes 绛夈€?
+- 閰嶇疆瀹屾垚鍚庨噸鍚綉鍏冲嵆鍙紑濮嬫眹鎶ャ€傝嫢瑕侀獙璇侊紝鍙瀵熸棩蹇椾腑 CacheReportService/MqttReportHandler 鏄惁杈撳嚭鍙戦€佽褰曘€?
 
-1. 点位自身告警规则命中：DataPoint.alarmRule 要有启用的规则，且 processResult.getFinalValue() 触发了 rule.checkAlarm()。
-2. ProcessResult.metadata 主动标记事件：采集或处理链路把 metadata.put("eventTriggered", true)（或至少 metadata.put("eventType", "...")）写进去，并附带 eventLevel/eventMessage 等信息。
-3. 质量降级：processResult.getQuality() 低于 QualityEnum.WARNING（例如 BAD / NOT_CONNECTED 等），就会自动生成 eventType=QUALITY 的事件。
 
-除此之外，还要满足以下约束，否则即便触发条件成立也会过滤掉：
 
-- DataPoint.isEventReportingEnabled() 必须为 true。默认如果 additionalConfig 没有 eventEnabled=false，就视为开启；但有些点位如果配置了 eventEnabled=false 或 alarmEnabled=0，事件会被整体关闭。
-- 同一类型事件在 eventMinIntervalMs 内只允许出现一次。默认 5000ms，可通过 additionalConfig.eventMinIntervalMs（或 ReportProperties.eventMinIntervalMs 全局默认）调整。如果你频繁模拟同一事件，可能因为节流/去重被忽略。
-- 事件指纹去重：eventType + message/ruleId/ruleName 在 eventMinIntervalMs 内重复出现也会被判定为重复。
+## 涓婃姤闂
+shadowManager.apply(...) 浼氬湪涓夌鎯呭喌涓嬭繑鍥?eventInfo锛?
 
-因此，如果你每次都拿不到 eventInfo，请检查：
+1. 鐐逛綅鑷韩鍛婅瑙勫垯鍛戒腑锛欴ataPoint.alarmRule 瑕佹湁鍚敤鐨勮鍒欙紝涓?processResult.getFinalValue() 瑙﹀彂浜?rule.checkAlarm()銆?
+2. ProcessResult.metadata 涓诲姩鏍囪浜嬩欢锛氶噰闆嗘垨澶勭悊閾捐矾鎶?metadata.put("eventTriggered", true)锛堟垨鑷冲皯 metadata.put("eventType", "...")锛夊啓杩涘幓锛屽苟闄勫甫 eventLevel/eventMessage 绛変俊鎭€?
+3. 璐ㄩ噺闄嶇骇锛歱rocessResult.getQuality() 浣庝簬 QualityEnum.WARNING锛堜緥濡?BAD / NOT_CONNECTED 绛夛級锛屽氨浼氳嚜鍔ㄧ敓鎴?eventType=QUALITY 鐨勪簨浠躲€?
 
-1. 点位的 additionalConfig 是否包含 eventEnabled=false 或 eventMinIntervalMs 过大；
-2. 当前 ProcessResult 有没有 metadata 标记或质量降级；
-3. 是否在上一条触发后尚未超过 eventMinIntervalMs（可以暂时把 interval 设为很小验证）；
-4. 日志中是否出现 FieldUniquenessValidator 的冲突或其他降级提示——被降级的点虽然还能采集，但影子里不会做变化/事件判断。
+闄ゆ涔嬪锛岃繕瑕佹弧瓒充互涓嬬害鏉燂紝鍚﹀垯鍗充究瑙﹀彂鏉′欢鎴愮珛涔熶細杩囨护鎺夛細
 
-如果你需要通过代码主动触发事件，可以在采集结果里加上：
+- DataPoint.isEventReportingEnabled() 蹇呴』涓?true銆傞粯璁ゅ鏋?additionalConfig 娌℃湁 eventEnabled=false锛屽氨瑙嗕负寮€鍚紱浣嗘湁浜涚偣浣嶅鏋滈厤缃簡 eventEnabled=false 鎴?alarmEnabled=0锛屼簨浠朵細琚暣浣撳叧闂€?
+- 鍚屼竴绫诲瀷浜嬩欢鍦?eventMinIntervalMs 鍐呭彧鍏佽鍑虹幇涓€娆°€傞粯璁?5000ms锛屽彲閫氳繃 additionalConfig.eventMinIntervalMs锛堟垨 ReportProperties.eventMinIntervalMs 鍏ㄥ眬榛樿锛夎皟鏁淬€傚鏋滀綘棰戠箒妯℃嫙鍚屼竴浜嬩欢锛屽彲鑳藉洜涓鸿妭娴?鍘婚噸琚拷鐣ャ€?
+- 浜嬩欢鎸囩汗鍘婚噸锛歟ventType + message/ruleId/ruleName 鍦?eventMinIntervalMs 鍐呴噸澶嶅嚭鐜颁篃浼氳鍒ゅ畾涓洪噸澶嶃€?
+
+鍥犳锛屽鏋滀綘姣忔閮芥嬁涓嶅埌 eventInfo锛岃妫€鏌ワ細
+
+1. 鐐逛綅鐨?additionalConfig 鏄惁鍖呭惈 eventEnabled=false 鎴?eventMinIntervalMs 杩囧ぇ锛?
+2. 褰撳墠 ProcessResult 鏈夋病鏈?metadata 鏍囪鎴栬川閲忛檷绾э紱
+3. 鏄惁鍦ㄤ笂涓€鏉¤Е鍙戝悗灏氭湭瓒呰繃 eventMinIntervalMs锛堝彲浠ユ殏鏃舵妸 interval 璁句负寰堝皬楠岃瘉锛夛紱
+4. 鏃ュ織涓槸鍚﹀嚭鐜?FieldUniquenessValidator 鐨勫啿绐佹垨鍏朵粬闄嶇骇鎻愮ず鈥斺€旇闄嶇骇鐨勭偣铏界劧杩樿兘閲囬泦锛屼絾褰卞瓙閲屼笉浼氬仛鍙樺寲/浜嬩欢鍒ゆ柇銆?
+
+濡傛灉浣犻渶瑕侀€氳繃浠ｇ爜涓诲姩瑙﹀彂浜嬩欢锛屽彲浠ュ湪閲囬泦缁撴灉閲屽姞涓婏細
 
 ProcessResult result = new ProcessResult();
 result.addMetadata("eventTriggered", true);
@@ -157,23 +252,23 @@ result.addMetadata("eventMessage", "test");
 
 
 
-## 优化
-1. 告警：维持原有 DataPoint.alarmEnabled=1 与 AlarmRule 配置即可；当告警发生时，AlertManager.getRecentAlerts() 会返回触发记录，上游依旧收到 CacheReportService 发出的事件上报。
-2. 单位：若采集值的原始单位与 DataPoint.unit 不同，可在 ProcessContext 写入 context.addAttribute("rawUnit", "°F") 或在数据点的 additionalConfig.sourceUnit 中声明；必要时可在配置里覆盖 contextUnitAttribute 和                   
-   additionalConfigUnitKey。
-3. 死区缓存：通过处理器配置中的 sampleTtlMs、maxCacheSize 控制缓存生命期。
+## 浼樺寲
+1. 鍛婅锛氱淮鎸佸師鏈?DataPoint.alarmEnabled=1 涓?AlarmRule 閰嶇疆鍗冲彲锛涘綋鍛婅鍙戠敓鏃讹紝AlertManager.getRecentAlerts() 浼氳繑鍥炶Е鍙戣褰曪紝涓婃父渚濇棫鏀跺埌 CacheReportService 鍙戝嚭鐨勪簨浠朵笂鎶ャ€?
+2. 鍗曚綅锛氳嫢閲囬泦鍊肩殑鍘熷鍗曚綅涓?DataPoint.unit 涓嶅悓锛屽彲鍦?ProcessContext 鍐欏叆 context.addAttribute("rawUnit", "掳F") 鎴栧湪鏁版嵁鐐圭殑 additionalConfig.sourceUnit 涓０鏄庯紱蹇呰鏃跺彲鍦ㄩ厤缃噷瑕嗙洊 contextUnitAttribute 鍜?                  
+   additionalConfigUnitKey銆?
+3. 姝诲尯缂撳瓨锛氶€氳繃澶勭悊鍣ㄩ厤缃腑鐨?sampleTtlMs銆乵axCacheSize 鎺у埗缂撳瓨鐢熷懡鏈熴€?
 
 
 
-## 优化
-• - MQTT 回执与离线重传 – 现在可以在 collector.report.mqtt 中配置 ack-topic-prefix/ack-topic-suffix（或直接覆写模板），所有上报会自动订阅云端回执 Topic，并按 ACK JSON 里的 id/code/msg 关联结果（MqttReportHandler 已增加 ACK 处理
-器）。当客户端掉线或回执超时，CacheReportService 会把结果标记为 deferred 并延时重试，等连接恢复再补发；日志里会看到 “Deferred retry scheduled …” 方便确认。
-- 告警链路打通 – AlertNotification 新增设备名称、单位等字段，DataQualityProcessor 触发告警时会填好这些信息后交给 AlertManager。AlertManager 不再只打印日志，而是调用新加的 CacheReportService.reportAlert 直接上发事件。          
-  ShadowManager 在匹配告警规则前会检查 DataPoint.alarmEnabled==1，避免误触发。
-- 配置与文档 – application.yml 和 README.md 都更新了关于 ACK Topic 的说明，照着填上云端要求的前缀/后缀即可使用；如需覆盖默认模板可直接写完整的 ackTopicTemplate。
+## 浼樺寲
+鈥?- MQTT 鍥炴墽涓庣绾块噸浼?鈥?鐜板湪鍙互鍦?collector.report.mqtt 涓厤缃?ack-topic-prefix/ack-topic-suffix锛堟垨鐩存帴瑕嗗啓妯℃澘锛夛紝鎵€鏈変笂鎶ヤ細鑷姩璁㈤槄浜戠鍥炴墽 Topic锛屽苟鎸?ACK JSON 閲岀殑 id/code/msg 鍏宠仈缁撴灉锛圡qttReportHandler 宸插鍔?ACK 澶勭悊
+鍣級銆傚綋瀹㈡埛绔帀绾挎垨鍥炴墽瓒呮椂锛孋acheReportService 浼氭妸缁撴灉鏍囪涓?deferred 骞跺欢鏃堕噸璇曪紝绛夎繛鎺ユ仮澶嶅啀琛ュ彂锛涙棩蹇楅噷浼氱湅鍒?鈥淒eferred retry scheduled 鈥︹€?鏂逛究纭銆?
+- 鍛婅閾捐矾鎵撻€?鈥?AlertNotification 鏂板璁惧鍚嶇О銆佸崟浣嶇瓑瀛楁锛孌ataQualityProcessor 瑙﹀彂鍛婅鏃朵細濉ソ杩欎簺淇℃伅鍚庝氦缁?AlertManager銆侫lertManager 涓嶅啀鍙墦鍗版棩蹇楋紝鑰屾槸璋冪敤鏂板姞鐨?CacheReportService.reportAlert 鐩存帴涓婂彂浜嬩欢銆?         
+  ShadowManager 鍦ㄥ尮閰嶅憡璀﹁鍒欏墠浼氭鏌?DataPoint.alarmEnabled==1锛岄伩鍏嶈瑙﹀彂銆?
+- 閰嶇疆涓庢枃妗?鈥?application.yml 鍜?README.md 閮芥洿鏂颁簡鍏充簬 ACK Topic 鐨勮鏄庯紝鐓х潃濉笂浜戠瑕佹眰鐨勫墠缂€/鍚庣紑鍗冲彲浣跨敤锛涘闇€瑕嗙洊榛樿妯℃澘鍙洿鎺ュ啓瀹屾暣鐨?ackTopicTemplate銆?
 
-使用步骤（复述）：
+浣跨敤姝ラ锛堝杩帮級锛?
 
-1. 在 application.yml（或相应环境配置）里配置好 MQTT 账号、上报 Topic 以及 ack-topic-prefix/suffix，启动后系统会自动订阅 /sys/<projectKey>/<deviceName>/… 这类回执队列。
-2. 希望上报告警的点位要在 DataPoint 配置里把 alarmEnabled 设置为 1；流程会自动把告警通过 reportAlert 上发，并附带 unit/deviceName 等元信息。
-3. 如果 MQTT 断线，系统会自动将批次标记为 deferred 并等待重连，无需人工干预。
+1. 鍦?application.yml锛堟垨鐩稿簲鐜閰嶇疆锛夐噷閰嶇疆濂?MQTT 璐﹀彿銆佷笂鎶?Topic 浠ュ強 ack-topic-prefix/suffix锛屽惎鍔ㄥ悗绯荤粺浼氳嚜鍔ㄨ闃?/sys/<projectKey>/<deviceName>/鈥?杩欑被鍥炴墽闃熷垪銆?
+2. 甯屾湜涓婃姤鍛婅鐨勭偣浣嶈鍦?DataPoint 閰嶇疆閲屾妸 alarmEnabled 璁剧疆涓?1锛涙祦绋嬩細鑷姩鎶婂憡璀﹂€氳繃 reportAlert 涓婂彂锛屽苟闄勫甫 unit/deviceName 绛夊厓淇℃伅銆?
+3. 濡傛灉 MQTT 鏂嚎锛岀郴缁熶細鑷姩灏嗘壒娆℃爣璁颁负 deferred 骞剁瓑寰呴噸杩烇紝鏃犻渶浜哄伐骞查銆

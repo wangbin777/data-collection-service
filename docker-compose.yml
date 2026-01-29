@@ -1,12 +1,34 @@
-version: '3.8'
+version: "3.9"
 services:
   app:
     build: .
+    image: data-collection-service:latest
+    container_name: data-collection-service
+    depends_on:
+      redis:
+        condition: service_healthy
     ports:
-      - "8080:8080"
+      - "9090:9090"
     environment:
-      - SPRING_PROFILES_ACTIVE=dev
+      SPRING_PROFILES_ACTIVE: prod
+      JAVA_OPTS: -Xms256m -Xmx512m
+    volumes:
+      - app-logs:/opt/app/logs
+    restart: unless-stopped
   redis:
-    image: redis:7
+    image: redis:7-alpine
+    container_name: data-collection-redis
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  app-logs:
+  redis-data:
