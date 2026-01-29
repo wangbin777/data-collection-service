@@ -7,7 +7,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/data_collection?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
-    password: wangbin@123
+    password: 123456
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
@@ -16,11 +16,11 @@ spring:
       max-lifetime: 1800000
   data:
     redis:
-      host: 43.138.73.155
+      host: 127.0.0.1
       port: 6739
       database: 0
       timeout: 3000
-      password: wangbin@123
+      password: 123456
       lettuce:
         pool:
           max-active: 20
