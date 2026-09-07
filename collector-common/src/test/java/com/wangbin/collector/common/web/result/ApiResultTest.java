@@ -42,12 +42,12 @@ class ApiResultTest {
     }
 
     @Test
-    void statusStyleShouldKeepLegacyApiResponseJsonShape() throws Exception {
+    void statusStyleSuccessShouldExposeCodeAndStatusForFrontendContract() throws Exception {
         ApiResult<Map<String, Object>> result = ApiResult.statusSuccess("配置已保存", Map.of("deviceId", "dev-1"));
 
         JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(result));
 
-        assertFalse(json.has("code"));
+        assertEquals(200, json.get("code").asInt());
         assertEquals("success", json.get("status").asText());
         assertEquals("配置已保存", json.get("message").asText());
         assertEquals("dev-1", json.get("data").get("deviceId").asText());
@@ -95,7 +95,7 @@ class ApiResultTest {
 
         JsonNode startJson = objectMapper.readTree(objectMapper.writeValueAsString(startResult));
 
-        assertFalse(startJson.has("code"));
+        assertEquals(200, startJson.get("code").asInt());
         assertFalse(startJson.has("data"));
         assertEquals("success", startJson.get("status").asText());
         assertEquals("dev-1", startJson.get("deviceId").asText());
@@ -106,7 +106,7 @@ class ApiResultTest {
 
         JsonNode runningJson = objectMapper.readTree(objectMapper.writeValueAsString(runningResult));
 
-        assertFalse(runningJson.has("code"));
+        assertEquals(200, runningJson.get("code").asInt());
         assertFalse(runningJson.has("message"));
         assertEquals("success", runningJson.get("status").asText());
         assertEquals("dev-1", runningJson.get("data").get(0).asText());

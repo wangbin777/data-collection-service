@@ -1,5 +1,11 @@
 # Task 01.1 Reliability Baseline
 
+Task 01 — API Contract & Runtime Reliability
+
+FINAL STATUS: COMPLETE
+
+01.8 Final Audit 更新：最终审计未发现 BLOCKER。API response boundary、stable API typing、request lifecycle、aggregate realtime、HTTP fallback + safe optional WebSocket、History/Alarm/Dashboard partial failure、PointEditor O(P²) 修复与 real executable JAR smoke 均已复核通过。当前 production realtime baseline 仍是 HTTP aggregate polling；backend `/ws/realtime` 未实现、`ConfigOpsPanel` 初始化 sync status 吞错 P2、标准 `el-table` 线性 DOM 成本、full real TDengine/Redis/Cloud/PLC SLA、Electron security/delivery、dependency security 与 bundle/startup performance 均保留为非 Task 01 blocker 的后续风险。
+
 生成时间：2026-09-02 15:05:07 +0800
 
 本文件记录 `Frontend Production Readiness / 01 API Contract & Runtime Reliability` 的可靠性基线。范围只包括发现和记录，不包含统一 Error Model、AbortController、WebSocket 架构或性能重构。

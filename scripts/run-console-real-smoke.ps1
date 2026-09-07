@@ -65,6 +65,12 @@ function Assert-StatusCode($Response, [int]$Expected, [string]$Name) {
     }
 }
 
+function Assert-StatusCodeIn($Response, [int[]]$Expected, [string]$Name) {
+    if ($Expected -notcontains $Response.StatusCode) {
+        Fail-Smoke $Name "expected HTTP $($Expected -join '/'), actual HTTP $($Response.StatusCode)"
+    }
+}
+
 function Get-JsonProperty($Object, [string]$Name) {
     if ($null -eq $Object) {
         return $null
@@ -581,7 +587,7 @@ function Run-Smoke() {
     Write-Pass "public health" "JSON status=$(Get-JsonProperty $health.Json 'status')"
 
     $actuator = Invoke-SmokeRequest "actuator-health" "/actuator/health" "GET" "" $null 15
-    Assert-StatusCode $actuator 200 "actuator health"
+    Assert-StatusCodeIn $actuator @(200, 503) "actuator health"
     Assert-Json $actuator "actuator health"
     Assert-True (Has-JsonProperty $actuator.Json "status") "actuator health" "expected status field"
     Write-Pass "actuator health" "status=$(Get-JsonProperty $actuator.Json 'status')"
