@@ -61,7 +61,7 @@ class OpsControllerTest {
                         .param("keyword", "连接")
                         .param("limit", "20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.data.count", is(1)))
                 .andExpect(jsonPath("$.data.items[0].message", is("设备连接失败")));

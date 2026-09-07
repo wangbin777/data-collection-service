@@ -39,7 +39,7 @@ class DeviceControllerTest {
 
         mockMvc.perform(post("/api/device/dev-1/start"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.message", is("设备启动成功")))
                 .andExpect(jsonPath("$.deviceId", is("dev-1")))
@@ -64,7 +64,7 @@ class DeviceControllerTest {
 
         mockMvc.perform(get("/api/device/running"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.data[0]", is("dev-1")))
                 .andExpect(jsonPath("$.data[1]", is("dev-2")))
@@ -75,7 +75,7 @@ class DeviceControllerTest {
     void shouldTriggerDeviceReloadWithAsyncMessage() throws Exception {
         mockMvc.perform(post("/api/device/reload"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.message", is("已触发设备重新加载")));
     }
@@ -90,7 +90,7 @@ class DeviceControllerTest {
 
         mockMvc.perform(get("/api/device/runtime"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.data[0].deviceId", is("dev-1")))
                 .andExpect(jsonPath("$.data[0].phase", is("ONLINE")))
@@ -104,7 +104,7 @@ class DeviceControllerTest {
 
         mockMvc.perform(get("/api/device/dev-1/running"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.deviceId", is("dev-1")))
                 .andExpect(jsonPath("$.running", is(true)))
@@ -126,7 +126,7 @@ class DeviceControllerTest {
 
         mockMvc.perform(get("/api/device/dev-1/status"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.deviceId", is("dev-1")))
                 .andExpect(jsonPath("$.data.deviceId", is("dev-1")))
@@ -150,7 +150,7 @@ class DeviceControllerTest {
 
         mockMvc.perform(get("/api/device/statistics"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.data.dev-1.totalExecutions", is(10)))
                 .andExpect(jsonPath("$.data.dev-1.successRate", is(80.0D)))

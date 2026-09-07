@@ -80,7 +80,7 @@ class ConfigControllerTest {
 
         mockMvc.perform(get("/api/config/summary"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.data.cacheStats.deviceCount", is(1)))
                 .andExpect(jsonPath("$.data.cacheStats.pointCount", is(2)))
@@ -151,6 +151,7 @@ class ConfigControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code", is(200)))
                 .andExpect(jsonPath("$.status", is("success")))
                 .andExpect(jsonPath("$.data.configSource", is("local")))
                 .andExpect(jsonPath("$.data.temporaryConfig", is(true)))

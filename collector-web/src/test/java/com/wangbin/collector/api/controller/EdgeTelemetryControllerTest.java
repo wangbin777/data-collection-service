@@ -51,7 +51,7 @@ class EdgeTelemetryControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.status").value("success"))
                 .andExpect(jsonPath("$.data.gatewayId").value("gateway-1"))
                 .andExpect(jsonPath("$.data.configVersion").value("v1"))

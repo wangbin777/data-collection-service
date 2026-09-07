@@ -21,13 +21,10 @@ collector-desktop/docs/*
 !/collector-desktop/docs/frontend-refactor/**
 !/collector-desktop/docs/production-readiness/
 !/collector-desktop/docs/production-readiness/**
-scripts/*
-!scripts/soak/
-!scripts/soak/**
+scripts/
 AGENTS.md
 !/collector-desktop/AGENTS.md
 .m2-local
-scripts
 !/collector-desktop/scripts/
 /collector-desktop/scripts/*
 !/collector-desktop/scripts/sync-web-console.mjs

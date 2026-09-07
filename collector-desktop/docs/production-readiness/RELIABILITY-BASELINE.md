@@ -28,6 +28,8 @@
 
 01.6 更新：`PointEditor.runtimeOf()` 已从 `runtimeMergedRows.value.find(...)` 改为基于 `realtimeRows` 的 component-local `runtimeLookup`，lookup 只在实时快照变化时重建；`resolvePointRuntime()` 复用与 `mergePointRuntime()` 相同的 `pointId -> pointCode -> address` 匹配语义，单点最多 3 次 `Map.get()`。表格仍使用 editable `filteredPoints` 原始点位对象，未改为 merged copies；`displayExtraValue()` 改为 direct additionalConfig path accessor，避免每个动态字段 cell 构建临时 `PointExtraModel`。Task 01.6 PointEditor Performance 可标记为 COMPLETE；后续如真实 profiling 发现 DOM 渲染仍是瓶颈，再单独评估虚拟表格或分页。
 
+01.7 更新：已新增 `scripts/run-console-real-smoke.ps1` 并通过最终打包出的 `collector-boot/target/data-collection-service-0.0.1-SNAPSHOT.jar` 执行真实 `java -jar` smoke。验证覆盖 `/collector/health`、`/collector/actuator/health`、`/collector/desktop/index.html`、实际 JS/CSS 静态资源、no-token/invalid-token/valid-token 鉴权边界、`ApiResult` envelope、RAW aggregate DTO、Dashboard 数据源、固定本地临时设备 `smoke-local-http-01` 创建/读取/点位/实时/聚合/摘要/清理，以及一次 aggregate 调用仅产生 `1 × GET /api/data/realtime`。TDengine disabled 下 `dashboard recent alarms` 与 `dashboard storage` 返回合法 JSON 降级状态。真实 smoke exit 0，spawned Java PID 已清理。Task 01.7 Real Backend Smoke & Regression 可标记为 COMPLETE；Task 01 仍需 Task 01.8 Final Production Readiness Audit。
+
 ## 1. 错误处理模式盘点
 
 | 文件 / 区域 | 当前模式 | 分类 | 影响 |
@@ -139,7 +141,7 @@
 
 ## 6. Reliability Backlog
 
-Task 01.3 Request Lifecycle Reliability COMPLETE：与 stale read / refresh ownership 直接相关的 backlog 已在 01.3A / 01.3B / 01.3C 收口。Task 01.4 Realtime Reliability、Task 01.5 Partial Failure 和 Task 01.6 PointEditor Performance 也已分别完成对应 P0/P1/P2 收口；剩余未处理项不属于本轮 01.6。
+Task 01.3 Request Lifecycle Reliability COMPLETE：与 stale read / refresh ownership 直接相关的 backlog 已在 01.3A / 01.3B / 01.3C 收口。Task 01.4 Realtime Reliability、Task 01.5 Partial Failure、Task 01.6 PointEditor Performance 和 Task 01.7 Real Backend Smoke 也已分别完成对应收口；剩余未处理项不属于本轮 01.7。
 
 ### P0（克制，仅生产不可接受风险）
 

@@ -112,6 +112,7 @@ public class ApiResult<T> {
      */
     public static <T> ApiResult<T> statusSuccess(String message, T data) {
         ApiResult<T> result = new ApiResult<>();
+        result.setCode(ResultCode.SUCCESS.getCode());
         result.setStatus(STATUS_SUCCESS);
         result.setMessage(message);
         result.setData(data);
