@@ -21,7 +21,6 @@ collector-desktop/docs/*
 !/collector-desktop/docs/frontend-refactor/**
 !/collector-desktop/docs/production-readiness/
 !/collector-desktop/docs/production-readiness/**
-scripts/
 AGENTS.md
 !/collector-desktop/AGENTS.md
 .m2-local
